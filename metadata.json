@@ -1,0 +1,7 @@
+{
+  "name": "SchoolPool: Smart Transport",
+  "description": "A comprehensive school transportation management platform providing real-time tracking, route optimization, and role-based interfaces for drivers, students, and administrators.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
