@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Vehicle, Student, Language } from '../types';
+import { Vehicle, Student, Language, Coordinates } from '../types';
 import MapEngine from './MapEngine';
 import { Clock, Phone, Shield, ChevronRight, Bus } from 'lucide-react';
 import { t } from '../services/i18n';
@@ -8,9 +8,10 @@ interface PassengerInterfaceProps {
   currentUser: Student;
   vehicles: Vehicle[];
   lang: Language;
+  userLocation?: Coordinates | null;
 }
 
-const PassengerInterface: React.FC<PassengerInterfaceProps> = ({ currentUser, vehicles, lang }) => {
+const PassengerInterface: React.FC<PassengerInterfaceProps> = ({ currentUser, vehicles, lang, userLocation }) => {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(
     vehicles.find(v => v.id === currentUser.vehicleId) || null
   );
@@ -31,7 +32,7 @@ const PassengerInterface: React.FC<PassengerInterfaceProps> = ({ currentUser, ve
       <div className="flex-1 relative">
         <MapEngine
           vehicles={vehicles}
-          userLocation={currentUser.location}
+          userLocation={userLocation || currentUser.location}
           showRoutes={false}
           highlightVehicleId={selectedVehicle?.id}
           onVehicleClick={setSelectedVehicle}

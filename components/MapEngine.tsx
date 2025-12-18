@@ -71,11 +71,16 @@ const MapEngine: React.FC<MapEngineProps> = ({
         }
       } catch (e) {}
 
+      // Use userLocation if available, otherwise default to São Paulo
+      const initialCenter = userLocation 
+        ? [userLocation.lng, userLocation.lat] 
+        : [-46.6565, -23.5614];
+
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/streets-v12',
-        center: [-46.6565, -23.5614], // São Paulo
-        zoom: navigationMode ? 16 : 13,
+        center: initialCenter as [number, number],
+        zoom: navigationMode ? 16 : (userLocation ? 15 : 13),
         pitch: navigationMode ? 60 : 45,
         bearing: 0,
         attributionControl: false,
@@ -88,6 +93,17 @@ const MapEngine: React.FC<MapEngineProps> = ({
           return { url };
         }
       });
+
+      // If userLocation becomes available after map initialization, center on it
+      if (userLocation && map.current) {
+        map.current.once('load', () => {
+          map.current?.flyTo({
+            center: [userLocation.lng, userLocation.lat],
+            zoom: 15,
+            duration: 1500
+          });
+        });
+      }
 
       map.current.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
 
@@ -284,6 +300,19 @@ const MapEngine: React.FC<MapEngineProps> = ({
       }
     }
   }, [highlightVehicleId, vehicles, navigationMode, currentRoute]);
+
+  // Center map on user location when available
+  useEffect(() => {
+    if (userLocation && map.current && map.current.isStyleLoaded()) {
+      try {
+        map.current.flyTo({
+          center: [userLocation.lng, userLocation.lat],
+          zoom: 15,
+          duration: 1500
+        });
+      } catch(e) {}
+    }
+  }, [userLocation]);
 
   return (
     <div className={`relative bg-[#010A13] overflow-hidden ${className}`}>

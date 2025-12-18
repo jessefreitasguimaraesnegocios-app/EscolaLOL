@@ -13,10 +13,11 @@ interface DriverInterfaceProps {
   onAssignStudent: (studentId: string, vehicleId: string) => void;
   onOptimizeRoute: (vehicleId: string, passengers: Student[]) => void;
   lang: Language;
+  userLocation?: Coordinates | null;
 }
 
 const DriverInterface: React.FC<DriverInterfaceProps> = ({ 
-  vehicle, passengers, unassignedStudents, onAssignStudent, onOptimizeRoute, lang 
+  vehicle, passengers, unassignedStudents, onAssignStudent, onOptimizeRoute, lang, userLocation 
 }) => {
   const [activeStopId, setActiveStopId] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -105,6 +106,7 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
           highlightVehicleId={vehicle.id}
           navigationMode={navigationMode}
           currentRoute={currentRoutePoints}
+          userLocation={userLocation || vehicle.location}
           className="h-full w-full"
         />
         

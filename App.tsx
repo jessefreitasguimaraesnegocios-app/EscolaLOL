@@ -1,25 +1,60 @@
 import React, { useState, useEffect } from 'react';
-import { UserRole, Vehicle, Student, Language } from './types';
+import { UserRole, Vehicle, Student, Language, Coordinates } from './types';
 import { INITIAL_VEHICLES, INITIAL_STUDENTS, moveVehicles, optimizeRoute } from './services/mockData';
 import DriverInterface from './components/DriverInterface';
 import PassengerInterface from './components/PassengerInterface';
 import AdminInterface from './components/AdminInterface';
 import { ShieldCheck, User, Bus, Globe } from 'lucide-react';
 import { t } from './services/i18n';
+import { useGeolocation } from './hooks/useGeolocation';
 
 const App: React.FC = () => {
   const [currentRole, setCurrentRole] = useState<UserRole>(UserRole.NONE);
   const [vehicles, setVehicles] = useState<Vehicle[]>(INITIAL_VEHICLES || []);
   const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS || []);
   const [lang, setLang] = useState<Language>('pt');
+  const [useRealGPS, setUseRealGPS] = useState(true);
 
+  // Get real GPS location
+  const { location: userGPSLocation, loading: gpsLoading, error: gpsError } = useGeolocation(
+    useRealGPS && currentRole !== UserRole.NONE
+  );
+
+  // Update vehicle location with real GPS (for driver) - updates continuously
   useEffect(() => {
-    if (!vehicles || vehicles.length === 0) return;
-    const interval = setInterval(() => {
-      setVehicles(prevVehicles => moveVehicles(prevVehicles || []));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    if (currentRole === UserRole.DRIVER && userGPSLocation && vehicles.length > 0 && useRealGPS) {
+      setVehicles(prevVehicles => 
+        (prevVehicles || []).map((v, idx) => 
+          idx === 0 // Update first vehicle (main vehicle) with real GPS
+            ? { ...v, location: userGPSLocation }
+            : v
+        )
+      );
+    }
+  }, [userGPSLocation, currentRole, useRealGPS]);
+
+  // Update student location with real GPS (for passenger) - updates continuously
+  useEffect(() => {
+    if (currentRole === UserRole.PASSENGER && userGPSLocation && students.length > 0 && useRealGPS) {
+      setStudents(prevStudents => 
+        (prevStudents || []).map((s, idx) => 
+          idx === 0 // Update first student (current user) with real GPS
+            ? { ...s, location: userGPSLocation }
+            : s
+        )
+      );
+    }
+  }, [userGPSLocation, currentRole, useRealGPS]);
+
+  // Simulate vehicle movement only if NOT using real GPS
+  useEffect(() => {
+    if (!useRealGPS && vehicles && vehicles.length > 0) {
+      const interval = setInterval(() => {
+        setVehicles(prevVehicles => moveVehicles(prevVehicles || []));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [useRealGPS, vehicles]);
 
   const handleUpdateVehicle = (vehicleId: string, updates: Partial<Vehicle>) => {
     setVehicles(prevVehicles => 
@@ -126,23 +161,55 @@ const App: React.FC = () => {
           onAssignStudent={handleAssignStudent}
           onOptimizeRoute={handleOptimizeRoute}
           lang={lang}
+          userLocation={userGPSLocation}
         />
       )}
       {currentRole === UserRole.PASSENGER && currentUser && (
-        <PassengerInterface currentUser={currentUser} vehicles={vehicles || []} lang={lang} />
+        <PassengerInterface 
+          currentUser={currentUser} 
+          vehicles={vehicles || []} 
+          lang={lang}
+          userLocation={userGPSLocation}
+        />
       )}
       {currentRole === UserRole.ADMIN && (
         <AdminInterface vehicles={vehicles || []} students={students || []} onUpdateVehicle={handleUpdateVehicle} lang={lang} />
       )}
 
       {/* Persistent UI Controls */}
-      <div className="fixed top-4 right-4 z-[100] flex gap-2">
-         <button onClick={() => setLang(lang === 'en' ? 'pt' : 'en')} className="bg-hextech-dark/90 border border-hextech-gold/30 text-hextech-gold px-3 py-1 font-beaufort text-xs tracking-widest hover:border-hextech-gold transition-all">
-           {lang.toUpperCase()}
-         </button>
-         <button onClick={() => setCurrentRole(UserRole.NONE)} className="bg-hextech-dark/90 border border-hextech-gold/30 text-hextech-gold px-3 py-1 font-beaufort text-xs tracking-widest hover:border-hextech-gold transition-all">
-           LOGOUT
-         </button>
+      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2">
+        <div className="flex gap-2">
+          <button onClick={() => setLang(lang === 'en' ? 'pt' : 'en')} className="bg-hextech-dark/90 border border-hextech-gold/30 text-hextech-gold px-3 py-1 font-beaufort text-xs tracking-widest hover:border-hextech-gold transition-all">
+            {lang.toUpperCase()}
+          </button>
+          <button onClick={() => setCurrentRole(UserRole.NONE)} className="bg-hextech-dark/90 border border-hextech-gold/30 text-hextech-gold px-3 py-1 font-beaufort text-xs tracking-widest hover:border-hextech-gold transition-all">
+            LOGOUT
+          </button>
+        </div>
+        {/* GPS Status Indicator */}
+        {currentRole !== UserRole.NONE && (
+          <button
+            onClick={() => setUseRealGPS(!useRealGPS)}
+            className={`px-3 py-1.5 text-xs font-beaufort tracking-widest border transition-all ${
+              gpsLoading 
+                ? 'bg-hextech-gold/20 border-hextech-gold/50 text-hextech-gold cursor-wait' 
+                : gpsError 
+                  ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
+                  : userGPSLocation && useRealGPS
+                    ? 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30' 
+                    : 'bg-hextech-gray/20 border-hextech-gray/50 text-hextech-gray hover:bg-hextech-gray/30'
+            }`}
+            title={useRealGPS ? 'Clique para desativar GPS real' : 'Clique para ativar GPS real'}
+          >
+            {gpsLoading 
+              ? 'GPS: Carregando...' 
+              : gpsError 
+                ? 'GPS: Erro (Clique para tentar)' 
+                : userGPSLocation && useRealGPS
+                  ? 'GPS: Ativo ✓' 
+                  : 'GPS: Simulado'}
+          </button>
+        )}
       </div>
     </div>
   );
