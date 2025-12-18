@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Vehicle, Student, Language, Coordinates } from '../types';
 import MapEngine from './MapEngine';
+import PassengerMenu from './PassengerMenu';
 import { Clock, Phone, Shield, ChevronRight, Bus } from 'lucide-react';
 import { t } from '../services/i18n';
 
@@ -9,14 +10,36 @@ interface PassengerInterfaceProps {
   vehicles: Vehicle[];
   lang: Language;
   userLocation?: Coordinates | null;
+  onUpdateStudent?: (updates: Partial<Student>) => void;
+  onAssignVehicle?: (studentId: string, vehicleId: string) => void;
 }
 
-const PassengerInterface: React.FC<PassengerInterfaceProps> = ({ currentUser, vehicles, lang, userLocation }) => {
+const PassengerInterface: React.FC<PassengerInterfaceProps> = ({ 
+  currentUser, 
+  vehicles, 
+  lang, 
+  userLocation,
+  onUpdateStudent,
+  onAssignVehicle
+}) => {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(
     vehicles.find(v => v.id === currentUser.vehicleId) || null
   );
 
   const assignedVehicle = vehicles.find(v => v.id === currentUser.vehicleId);
+
+  const handleSelectVehicle = (vehicleId: string) => {
+    if (onAssignVehicle) {
+      onAssignVehicle(currentUser.id, vehicleId);
+    }
+    setSelectedVehicle(vehicles.find(v => v.id === vehicleId) || null);
+  };
+
+  const handleUpdateStudent = (updates: Partial<Student>) => {
+    if (onUpdateStudent) {
+      onUpdateStudent(updates);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -94,6 +117,15 @@ const PassengerInterface: React.FC<PassengerInterfaceProps> = ({ currentUser, ve
           </div>
         )}
       </div>
+
+      {/* Menu Component */}
+      <PassengerMenu
+        student={currentUser}
+        vehicles={vehicles}
+        onUpdateStudent={handleUpdateStudent}
+        onSelectVehicle={handleSelectVehicle}
+        lang={lang}
+      />
     </div>
   );
 };

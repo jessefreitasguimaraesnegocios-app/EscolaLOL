@@ -1,19 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { UserRole, Vehicle, Student, Language, Coordinates } from './types';
+import { UserRole, Vehicle, Student, Language, Coordinates, User, VehicleStatus } from './types';
 import { INITIAL_VEHICLES, INITIAL_STUDENTS, moveVehicles, optimizeRoute } from './services/mockData';
 import DriverInterface from './components/DriverInterface';
 import PassengerInterface from './components/PassengerInterface';
 import AdminInterface from './components/AdminInterface';
-import { ShieldCheck, User, Bus, Globe } from 'lucide-react';
+import Login from './components/Login';
+import Register from './components/Register';
+import { ShieldCheck, User as UserIcon, Bus, Globe } from 'lucide-react';
 import { t } from './services/i18n';
 import { useGeolocation } from './hooks/useGeolocation';
+import { authService } from './services/authService';
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [showRegister, setShowRegister] = useState(false);
   const [currentRole, setCurrentRole] = useState<UserRole>(UserRole.NONE);
   const [vehicles, setVehicles] = useState<Vehicle[]>(INITIAL_VEHICLES || []);
   const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS || []);
   const [lang, setLang] = useState<Language>('pt');
   const [useRealGPS, setUseRealGPS] = useState(true);
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const user = authService.getCurrentUser();
+    if (user) {
+      setCurrentUser(user);
+      setCurrentRole(user.role);
+      setIsAuthenticated(true);
+    }
+  }, []);
 
   // Get real GPS location
   const { location: userGPSLocation, loading: gpsLoading, error: gpsError } = useGeolocation(
@@ -82,10 +98,102 @@ const App: React.FC = () => {
       setVehicles(prev => (prev || []).map(v => v.id === vehicleId ? { ...v, route: routePoints } : v));
   };
 
+  const handleLoginSuccess = (user: User) => {
+    setCurrentUser(user);
+    setCurrentRole(user.role);
+    setIsAuthenticated(true);
+    setShowRegister(false);
+    
+    // Associate user with vehicle/student if needed
+    if (user.role === UserRole.DRIVER && vehicles.length > 0) {
+      // Update first vehicle with driver's name if it matches
+      const vehicle = vehicles.find(v => v.driverName.toLowerCase().includes(user.name.split(' ')[0].toLowerCase()));
+      if (!vehicle && vehicles[0]) {
+        // Update first vehicle with user info
+        setVehicles(prev => prev.map((v, idx) => 
+          idx === 0 ? { ...v, driverName: user.name } : v
+        ));
+      }
+    }
+    
+    if (user.role === UserRole.PASSENGER && students.length > 0) {
+      // Update first student with user info if it matches
+      const student = students.find(s => s.name.toLowerCase().includes(user.name.split(' ')[0].toLowerCase()));
+      if (!student && students[0]) {
+        // Update first student with user info
+        setStudents(prev => prev.map((s, idx) => 
+          idx === 0 ? { 
+            ...s, 
+            name: user.name,
+            phone: (user as any).phone || s.phone,
+            address: (user as any).address || s.address,
+            location: (user as any).location || s.location
+          } : s
+        ));
+      }
+    }
+  };
+
+  const handleRegisterSuccess = (user: User) => {
+    setCurrentUser(user);
+    setCurrentRole(user.role);
+    setIsAuthenticated(true);
+    setShowRegister(false);
+    
+    // For new drivers, create a vehicle for them
+    if (user.role === UserRole.DRIVER) {
+      const newVehicle: Vehicle = {
+        id: `v-${user.id}`,
+        driverName: user.name,
+        plateNumber: 'NEW-' + Math.random().toString(36).substr(2, 4).toUpperCase(),
+        type: 'VAN',
+        capacity: 10,
+        currentPassengers: 0,
+        location: userGPSLocation || { lat: -23.5614, lng: -46.6565 },
+        status: VehicleStatus.IDLE,
+        route: [],
+        nextStopEta: 0,
+        destinationSchool: 'Lincoln High'
+      };
+      setVehicles(prev => [...prev, newVehicle]);
+    }
+    
+    // For new students, create a student entry
+    if (user.role === UserRole.PASSENGER) {
+      const studentUser = user as any;
+      const newStudent: Student = {
+        id: `s-${user.id}`,
+        name: user.name,
+        address: studentUser.address || 'Endereço não informado',
+        location: studentUser.location || userGPSLocation || { lat: -23.5614, lng: -46.6565 },
+        phone: studentUser.phone || '',
+        cpf: studentUser.cpf || '',
+        status: 'WAITING'
+      };
+      setStudents(prev => [...prev, newStudent]);
+    }
+  };
+
+  const handleLogout = () => {
+    authService.logout();
+    setCurrentUser(null);
+    setCurrentRole(UserRole.NONE);
+    setIsAuthenticated(false);
+  };
+
   // Safe element access to prevent reading '0' of undefined
   const mainVehicle = vehicles && vehicles.length > 0 ? vehicles[0] : null;
-  const currentUser = students && students.length > 0 ? students[0] : null;
+  const currentStudent = students && students.length > 0 ? students[0] : null;
 
+  // Show Login/Register if not authenticated
+  if (!isAuthenticated) {
+    if (showRegister) {
+      return <Register onRegisterSuccess={handleRegisterSuccess} onSwitchToLogin={() => setShowRegister(false)} lang={lang} />;
+    }
+    return <Login onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => setShowRegister(true)} lang={lang} />;
+  }
+
+  // Show role selection if authenticated but no role set (shouldn't happen, but safety check)
   if (currentRole === UserRole.NONE) {
     return (
       <div className="min-h-screen bg-hextech-radial flex flex-col items-center justify-center p-6 relative overflow-hidden">
@@ -117,7 +225,7 @@ const App: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-6xl relative z-10">
           {[
             { role: UserRole.DRIVER, icon: Bus, title: 'role_driver', desc: 'role_driver_desc', color: 'blue' },
-            { role: UserRole.PASSENGER, icon: User, title: 'role_student', desc: 'role_student_desc', color: 'gold' },
+            { role: UserRole.PASSENGER, icon: UserIcon, title: 'role_student', desc: 'role_student_desc', color: 'gold' },
             { role: UserRole.ADMIN, icon: ShieldCheck, title: 'role_director', desc: 'role_director_desc', color: 'blue' }
           ].map((item) => (
             <button 
@@ -164,12 +272,16 @@ const App: React.FC = () => {
           userLocation={userGPSLocation}
         />
       )}
-      {currentRole === UserRole.PASSENGER && currentUser && (
+      {currentRole === UserRole.PASSENGER && currentStudent && (
         <PassengerInterface 
-          currentUser={currentUser} 
+          currentUser={currentStudent} 
           vehicles={vehicles || []} 
           lang={lang}
           userLocation={userGPSLocation}
+          onUpdateStudent={(updates) => {
+            setStudents(prev => prev.map(s => s.id === currentStudent.id ? { ...s, ...updates } : s));
+          }}
+          onAssignVehicle={handleAssignStudent}
         />
       )}
       {currentRole === UserRole.ADMIN && (
@@ -182,9 +294,9 @@ const App: React.FC = () => {
           <button onClick={() => setLang(lang === 'en' ? 'pt' : 'en')} className="bg-hextech-dark/90 border border-hextech-gold/30 text-hextech-gold px-3 py-1 font-beaufort text-xs tracking-widest hover:border-hextech-gold transition-all">
             {lang.toUpperCase()}
           </button>
-          <button onClick={() => setCurrentRole(UserRole.NONE)} className="bg-hextech-dark/90 border border-hextech-gold/30 text-hextech-gold px-3 py-1 font-beaufort text-xs tracking-widest hover:border-hextech-gold transition-all">
-            LOGOUT
-          </button>
+         <button onClick={handleLogout} className="bg-hextech-dark/90 border border-hextech-gold/30 text-hextech-gold px-3 py-1 font-beaufort text-xs tracking-widest hover:border-hextech-gold transition-all">
+           SAIR
+         </button>
         </div>
         {/* GPS Status Indicator */}
         {currentRole !== UserRole.NONE && (

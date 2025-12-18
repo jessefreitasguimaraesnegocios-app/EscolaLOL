@@ -98,7 +98,22 @@ export const translations = {
     no_unassigned: "No unassigned students available.",
     confirm_arrival: "Confirm Arrival",
     distance: "Distance",
-    km: "km"
+    km: "km",
+    
+    // Authentication
+    login: "Login",
+    login_title: "Access your account",
+    register: "Register",
+    register_title: "Create your account",
+    email: "Email",
+    password: "Password",
+    no_account: "Don't have an account?",
+    already_account: "Already have an account?",
+    logout: "Logout",
+    
+    // Student Menu
+    profile: "My Profile",
+    available_vehicles: "Available Vehicles"
   },
   pt: {
     app_subtitle: "Transporte seguro, eficiente e inteligente para a próxima geração.",
@@ -196,7 +211,22 @@ export const translations = {
     no_unassigned: "Nenhum aluno sem transporte disponível.",
     confirm_arrival: "Confirmar Chegada",
     distance: "Distância",
-    km: "km"
+    km: "km",
+    
+    // Authentication
+    login: "Entrar",
+    login_title: "Acesse sua conta",
+    register: "Cadastrar",
+    register_title: "Crie sua conta",
+    email: "Email",
+    password: "Senha",
+    no_account: "Não tem uma conta?",
+    already_account: "Já tem uma conta?",
+    logout: "Sair",
+    
+    // Student Menu
+    profile: "Meu Perfil",
+    available_vehicles: "Vans Disponíveis"
   }
 };
 

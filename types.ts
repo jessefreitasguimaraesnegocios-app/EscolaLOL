@@ -29,6 +29,8 @@ export interface Student {
   cpf: string;
   status: 'WAITING' | 'PICKED_UP' | 'DROPPED_OFF' | 'ABSENT';
   vehicleId?: string;
+  photo?: string;
+  notes?: string; // Observações (autismo, problemas, etc.)
 }
 
 export interface Vehicle {
@@ -43,6 +45,10 @@ export interface Vehicle {
   route: Coordinates[]; // Array of waypoints
   nextStopEta: number; // minutes
   destinationSchool: string;
+  photo?: string; // Foto da van
+  price?: number; // Valor do transporte
+  assistants?: string[]; // Auxiliares
+  destinations?: string[]; // Destinos disponíveis
 }
 
 export interface RouteStop {
@@ -60,4 +66,33 @@ export interface AppState {
   vehicles: Vehicle[];
   students: Student[];
   notifications: string[];
+}
+
+export interface User {
+  id: string;
+  email: string;
+  password: string; // In production, this should be hashed
+  name: string;
+  role: UserRole;
+  phone?: string;
+  cpf?: string;
+  createdAt: Date;
+}
+
+export interface Driver extends User {
+  role: UserRole.DRIVER;
+  licenseNumber: string;
+  vehicleId?: string;
+}
+
+export interface StudentUser extends User {
+  role: UserRole.PASSENGER;
+  address: string;
+  location: Coordinates;
+  parentPhone?: string;
+}
+
+export interface AdminUser extends User {
+  role: UserRole.ADMIN;
+  schoolName?: string;
 }

@@ -58,6 +58,10 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     ],
     nextStopEta: 5,
     destinationSchool: 'Lincoln High',
+    price: 350.00,
+    assistants: ['Maria Silva', 'João Santos'],
+    destinations: ['Lincoln High', 'Escola Municipal Central'],
+    photo: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400'
   },
   {
     id: 'v2',
@@ -75,6 +79,10 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     ],
     nextStopEta: 12,
     destinationSchool: 'Lincoln High',
+    price: 280.00,
+    assistants: ['Pedro Costa'],
+    destinations: ['Lincoln High'],
+    photo: 'https://images.unsplash.com/photo-1568605117035-8c19a9dd0a43?w=400'
   },
   {
     id: 'v3',
@@ -87,7 +95,11 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     status: VehicleStatus.IDLE,
     route: [],
     nextStopEta: 0,
-    destinationSchool: 'Washington Elementary',
+    destinationSchool: 'Lincoln High',
+    price: 320.00,
+    assistants: ['Ana Paula'],
+    destinations: ['Lincoln High', 'Escola Estadual', 'Colégio São Paulo'],
+    photo: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400'
   }
 ];
 

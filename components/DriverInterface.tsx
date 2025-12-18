@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Vehicle, Student, RouteStop, Language, Coordinates } from '../types';
 import MapEngine from './MapEngine';
-import { Navigation, CheckCircle, MapPin, Users, Plus, Phone, CreditCard, X, Route as RouteIcon, Bus, Clock, ArrowRight, User, ChevronRight, School, ArrowLeft, ArrowUp } from 'lucide-react';
+import { Navigation, CheckCircle, MapPin, Users, Plus, Phone, CreditCard, X, Route as RouteIcon, Bus, Clock, ArrowRight, User, ChevronRight, School, ArrowLeft, ArrowUp, Bell } from 'lucide-react';
 import { t } from '../services/i18n';
 import { optimizeRoute, getDistance, calculateETA } from '../services/mockData';
 import { getNextInstruction, NavigationInstruction } from '../services/navigationService';
+import { notificationService } from '../services/notificationService';
 
 interface DriverInterfaceProps {
   vehicle: Vehicle;
@@ -26,6 +27,33 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
   const [navigationInstruction, setNavigationInstruction] = useState<NavigationInstruction | null>(null);
   const [navigationMode, setNavigationMode] = useState(true);
   const [currentRoutePoints, setCurrentRoutePoints] = useState<Coordinates[]>([]);
+  const [panelHeight, setPanelHeight] = useState(35); // Percentage of viewport height (default 35%)
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartY, setDragStartY] = useState(0);
+  const [dragStartHeight, setDragStartHeight] = useState(35);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [notifications, setNotifications] = useState(0);
+  
+  // Measure header height
+  useEffect(() => {
+    const header = document.querySelector('header');
+    if (header) {
+      setHeaderHeight(header.offsetHeight);
+    }
+  }, []);
+
+  // Check for notifications
+  useEffect(() => {
+    const checkNotifications = () => {
+      const vehicleNotifications = notificationService.getVehicleNotifications(vehicle.id);
+      setNotifications(vehicleNotifications.length);
+    };
+    
+    checkNotifications();
+    const interval = setInterval(checkNotifications, 2000); // Check every 2 seconds
+    
+    return () => clearInterval(interval);
+  }, [vehicle.id]);
 
   useEffect(() => {
     const { routeManifest, routePoints } = optimizeRoute(vehicle.location, passengers, vehicle.destinationSchool);
@@ -55,10 +83,48 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
     window.open(`tel:${phone}`, '_self');
   };
 
+  // Drag handlers for mobile/tablet
+  const handleDragStart = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    setIsDragging(true);
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    setDragStartY(clientY);
+    setDragStartHeight(panelHeight);
+  }, [panelHeight]);
+
+  const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const deltaY = dragStartY - clientY; // Negative when dragging up
+    const windowHeight = window.innerHeight;
+    const deltaVh = (deltaY / windowHeight) * 100; // Convert to vh units
+    const newHeight = Math.max(10, Math.min(50, dragStartHeight + deltaVh)); // Min 10vh, Max 50vh (half screen)
+    
+    setPanelHeight(newHeight);
+  }, [dragStartY, dragStartHeight]);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleDragMove);
+      document.addEventListener('mouseup', handleDragEnd);
+      document.addEventListener('touchmove', handleDragMove, { passive: false });
+      document.addEventListener('touchend', handleDragEnd);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mouseup', handleDragEnd);
+        document.removeEventListener('touchmove', handleDragMove);
+        document.removeEventListener('touchend', handleDragEnd);
+      };
+    }
+  }, [isDragging, handleDragMove, handleDragEnd]);
+
   return (
-    <div className="flex flex-col h-full bg-hextech-black">
+    <div className="flex flex-col h-full bg-hextech-black overflow-hidden">
       {/* Hextech Header */}
-      <header className="bg-hextech-dark border-b border-hextech-gold/30 p-4 z-20 flex justify-between items-center shadow-2xl">
+      <header className="bg-hextech-dark border-b border-hextech-gold/30 p-4 z-20 flex justify-between items-center shadow-2xl flex-shrink-0">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 border border-hextech-gold/50 flex items-center justify-center bg-hextech-black">
             <Bus className="text-hextech-gold" />
@@ -77,6 +143,16 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {notifications > 0 && (
+              <div className="relative">
+                <button className="px-3 py-2 text-xs flex items-center gap-2 border bg-hextech-gold/20 border-hextech-gold text-hextech-gold">
+                  <Bell size={16} />
+                  <span className="bg-red-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                    {notifications}
+                  </span>
+                </button>
+              </div>
+            )}
             <button 
               onClick={() => setNavigationMode(!navigationMode)}
               className={`px-3 py-2 text-xs flex items-center gap-2 border transition-all ${
@@ -97,8 +173,11 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
         </div>
       </header>
 
-      {/* Main Map Content */}
-      <div className="flex-1 relative border-x border-hextech-gold/10">
+      {/* Main Map Content - Adjusts based on panel height */}
+      <div 
+        className="relative border-x border-hextech-gold/10 transition-all duration-200 flex-shrink-0"
+        style={{ height: `calc(100vh - ${panelHeight}vh - ${headerHeight}px)` }}
+      >
         <MapEngine 
           vehicles={[vehicle]} 
           students={passengers} 
@@ -197,8 +276,30 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
         )}
       </div>
 
-      {/* Bottom Manifest Panel */}
-      <div className="h-[35%] bg-hextech-dark border-t border-hextech-gold/40 relative z-20 overflow-hidden flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.6)]">
+      {/* Bottom Manifest Panel - Draggable */}
+      <div 
+        className={`bg-hextech-dark border-t border-hextech-gold/40 relative z-20 overflow-hidden flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.6)] transition-all duration-200 flex-shrink-0 ${
+          isDragging ? 'shadow-[0_-15px_60px_rgba(195,167,88,0.4)]' : ''
+        }`}
+        style={{ height: `${panelHeight}vh` }}
+      >
+        {/* Drag Handle */}
+        <div 
+          onMouseDown={handleDragStart}
+          onTouchStart={handleDragStart}
+          className={`w-full h-10 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none border-b transition-all ${
+            isDragging 
+              ? 'bg-hextech-gold/20 border-hextech-gold/50' 
+              : 'bg-hextech-black/60 border-hextech-gold/20 hover:bg-hextech-black/80'
+          }`}
+        >
+          <div className={`w-16 h-1.5 rounded-full transition-all ${
+            isDragging 
+              ? 'bg-hextech-gold w-20 h-2' 
+              : 'bg-hextech-gold/50'
+          }`}></div>
+        </div>
+
         <div className="p-4 border-b border-hextech-gold/10 flex justify-between items-center bg-hextech-black/40">
           <h3 className="font-beaufort font-bold text-hextech-gold tracking-hextech uppercase text-sm">
             {t('route_manifest', lang)}
