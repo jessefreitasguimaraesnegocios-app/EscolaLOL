@@ -95,7 +95,10 @@ export const translations = {
     phone: "Phone",
     cpf: "CPF",
     add: "Add",
-    no_unassigned: "No unassigned students available."
+    no_unassigned: "No unassigned students available.",
+    confirm_arrival: "Confirm Arrival",
+    distance: "Distance",
+    km: "km"
   },
   pt: {
     app_subtitle: "Transporte seguro, eficiente e inteligente para a próxima geração.",
@@ -190,7 +193,10 @@ export const translations = {
     phone: "Telefone",
     cpf: "CPF",
     add: "Adicionar",
-    no_unassigned: "Nenhum aluno sem transporte disponível."
+    no_unassigned: "Nenhum aluno sem transporte disponível.",
+    confirm_arrival: "Confirmar Chegada",
+    distance: "Distância",
+    km: "km"
   }
 };
 

@@ -12,6 +12,8 @@ interface MapEngineProps {
   highlightVehicleId?: string;
   onVehicleClick?: (vehicle: Vehicle) => void;
   className?: string;
+  navigationMode?: boolean; // Waze-style navigation mode
+  currentRoute?: Coordinates[]; // Current route for navigation
 }
 
 // Custom Marker Component helpers
@@ -40,7 +42,9 @@ const MapEngine: React.FC<MapEngineProps> = ({
   showRoutes = false,
   highlightVehicleId,
   onVehicleClick,
-  className = ""
+  className = "",
+  navigationMode = false,
+  currentRoute = []
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -71,8 +75,9 @@ const MapEngine: React.FC<MapEngineProps> = ({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/streets-v12',
         center: [-46.6565, -23.5614], // São Paulo
-        zoom: 13,
-        pitch: 45,
+        zoom: navigationMode ? 16 : 13,
+        pitch: navigationMode ? 60 : 45,
+        bearing: 0,
         attributionControl: false,
         collectResourceTiming: false, // CRITICAL: Fix for Location.href error
         crossSourceCollisions: false,  // CRITICAL: Fix for cross-origin frame access
@@ -186,9 +191,11 @@ const MapEngine: React.FC<MapEngineProps> = ({
       // 3. Routes
       if (showRoutes) {
          vehicles.forEach(vehicle => {
-            if (!vehicle?.route || !Array.isArray(vehicle.route) || vehicle.route.length < 2) return;
+            // Use currentRoute if provided, otherwise use vehicle.route
+            const routeToUse = highlightVehicleId === vehicle.id && currentRoute.length > 0 ? currentRoute : vehicle.route;
+            if (!routeToUse || !Array.isArray(routeToUse) || routeToUse.length < 2) return;
             const sourceId = `route-${vehicle.id}`;
-            const coordinates = vehicle.route
+            const coordinates = routeToUse
                 .filter(pt => pt && typeof pt.lat === 'number' && typeof pt.lng === 'number')
                 .map(pt => [pt.lng, pt.lat]);
 
@@ -209,27 +216,74 @@ const MapEngine: React.FC<MapEngineProps> = ({
                   source: sourceId,
                   layout: { 'line-join': 'round', 'line-cap': 'round' },
                   paint: {
-                    'line-color': highlightVehicleId === vehicle.id ? '#1F4E8C' : '#3A3A3A',
-                    'line-width': highlightVehicleId === vehicle.id ? 4 : 2,
-                    'line-dasharray': highlightVehicleId === vehicle.id ? [] : [2, 1]
+                    'line-color': highlightVehicleId === vehicle.id ? (navigationMode ? '#C3A758' : '#1F4E8C') : '#3A3A3A',
+                    'line-width': highlightVehicleId === vehicle.id ? (navigationMode ? 6 : 4) : 2,
+                    'line-dasharray': highlightVehicleId === vehicle.id ? [] : [2, 1],
+                    'line-opacity': highlightVehicleId === vehicle.id ? 0.9 : 0.5
                   }
                });
+               
+               // Add route outline for better visibility (Waze style)
+               if (highlightVehicleId === vehicle.id && navigationMode) {
+                 map.current.addLayer({
+                   id: `${sourceId}-outline`,
+                   type: 'line',
+                   source: sourceId,
+                   layout: { 'line-join': 'round', 'line-cap': 'round' },
+                   paint: {
+                     'line-color': '#010A13',
+                     'line-width': 8,
+                     'line-opacity': 0.3
+                   }
+                 }, sourceId);
+               }
             }
          });
       }
     } catch (e) {}
-  }, [vehicles, students, highlightVehicleId, showRoutes]);
+  }, [vehicles, students, highlightVehicleId, showRoutes, navigationMode, currentRoute]);
 
+  // Navigation mode: Follow vehicle and update camera
   useEffect(() => {
-    if (highlightVehicleId && map.current) {
-       const v = vehicles?.find(v => v.id === highlightVehicleId);
-       if (v?.location && typeof v.location.lat === 'number') {
-          try {
-            map.current.flyTo({ center: [v.location.lng, v.location.lat], zoom: 15 });
-          } catch(e) {}
-       }
+    if (navigationMode && highlightVehicleId && map.current) {
+      const v = vehicles?.find(v => v.id === highlightVehicleId);
+      if (v?.location && typeof v.location.lat === 'number') {
+        try {
+          // Calculate bearing (direction) if we have a route
+          let bearing = 0;
+          if (currentRoute && currentRoute.length >= 2) {
+            const currentIdx = currentRoute.findIndex(
+              pt => Math.abs(pt.lat - v.location.lat) < 0.0001 && Math.abs(pt.lng - v.location.lng) < 0.0001
+            );
+            if (currentIdx >= 0 && currentIdx < currentRoute.length - 1) {
+              const next = currentRoute[currentIdx + 1];
+              const dx = next.lng - v.location.lng;
+              const dy = next.lat - v.location.lat;
+              bearing = (Math.atan2(dx, dy) * 180) / Math.PI;
+            }
+          }
+
+          // Smooth camera follow in navigation mode
+          map.current.easeTo({
+            center: [v.location.lng, v.location.lat],
+            zoom: 17,
+            pitch: 60,
+            bearing: bearing,
+            duration: 1000,
+            essential: true
+          });
+        } catch(e) {}
+      }
+    } else if (highlightVehicleId && map.current) {
+      // Normal mode: just center on vehicle
+      const v = vehicles?.find(v => v.id === highlightVehicleId);
+      if (v?.location && typeof v.location.lat === 'number') {
+        try {
+          map.current.flyTo({ center: [v.location.lng, v.location.lat], zoom: 15 });
+        } catch(e) {}
+      }
     }
-  }, [highlightVehicleId, vehicles]);
+  }, [highlightVehicleId, vehicles, navigationMode, currentRoute]);
 
   return (
     <div className={`relative bg-[#010A13] overflow-hidden ${className}`}>

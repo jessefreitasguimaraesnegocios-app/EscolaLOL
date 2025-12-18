@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* BASE GLOBAL */
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #010A13;
+  color: #C7C7C7;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+}
+
+/* Hextech Background Effect */
+.bg-hextech-radial {
+  background: radial-gradient(circle at center, #0A1428 0%, #010A13 100%);
+}
+
+/* League-style Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #010A13;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C3A758;
+  border-radius: 0px;
+}
+
+/* Buttons & Borders */
+.hextech-border {
+  border: 1px solid #C3A758;
+  box-shadow: inset 0 0 10px rgba(195, 167, 88, 0.1);
+}
+
+.hextech-border-blue {
+  border: 1px solid #1F4E8C;
+}
+
+.hextech-button-primary {
+  background: #1F4E8C;
+  border: 1px solid #3A6EA5;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: 'Cinzel', serif;
+}
+
+.hextech-button-primary:hover {
+  filter: brightness(1.2);
+  box-shadow: 0 0 15px rgba(31, 78, 140, 0.5);
+}
+
+.hextech-button-secondary {
+  background: #C3A758;
+  color: #010A13;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: 'Cinzel', serif;
+}
+
+.hextech-button-secondary:hover {
+  background: #E6D39A;
+  box-shadow: 0 0 15px rgba(195, 167, 88, 0.5);
+}
+
+.title-glow {
+  text-shadow: 0 0 10px rgba(195, 167, 88, 0.3);
+}
+

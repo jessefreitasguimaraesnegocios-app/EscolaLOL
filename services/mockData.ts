@@ -23,9 +23,23 @@ const nearbyCoord = (latOffset = 0, lngOffset = 0): Coordinates => ({
   lng: CENTER_LNG + lngOffset + (Math.random() * 0.01 - 0.005),
 });
 
-// Helper to calculate distance
-const getDistance = (c1: Coordinates, c2: Coordinates) => {
-  return Math.sqrt(Math.pow(c2.lat - c1.lat, 2) + Math.pow(c2.lng - c1.lng, 2));
+// Helper to calculate distance in kilometers (Haversine formula approximation)
+export const getDistance = (c1: Coordinates, c2: Coordinates): number => {
+  const R = 6371; // Earth's radius in km
+  const dLat = (c2.lat - c1.lat) * Math.PI / 180;
+  const dLng = (c2.lng - c1.lng) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+// Calculate ETA in minutes (assuming average speed of 40 km/h in city)
+export const calculateETA = (distanceKm: number): number => {
+  const avgSpeedKmh = 40; // Average city speed
+  return Math.ceil((distanceKm / avgSpeedKmh) * 60); // Convert to minutes
 };
 
 export const INITIAL_VEHICLES: Vehicle[] = [
@@ -160,7 +174,11 @@ export const moveVehicles = (vehicles: Vehicle[]): Vehicle[] => {
 };
 
 // --- Route Optimization Algorithm ---
-// Uses a Nearest Neighbor greedy algorithm to sort stops
+// Improved algorithm: Nearest Neighbor with destination consideration
+// 1. Start from driver location
+// 2. Pick nearest student
+// 3. Continue picking nearest student until all are picked
+// 4. Finally go to school (destination)
 export const optimizeRoute = (
   startLocation: Coordinates,
   passengers: Student[],
@@ -184,15 +202,17 @@ export const optimizeRoute = (
       location: s.location,
       completed: true,
       type: 'PICKUP',
-      eta: 'Completed'
+      eta: 'Concluído'
     });
   });
 
-  // 2. Sort waiting students by nearest neighbor
+  // 2. Optimize route: Nearest Neighbor algorithm
+  // Start from driver, go to nearest student, then nearest to that, etc.
   while (unvisitedStudents.length > 0) {
     let nearestIndex = -1;
     let minDist = Infinity;
 
+    // Find nearest unvisited student from current location
     for (let i = 0; i < unvisitedStudents.length; i++) {
       const dist = getDistance(currentLocation, unvisitedStudents[i].location);
       if (dist < minDist) {
@@ -203,6 +223,8 @@ export const optimizeRoute = (
 
     if (nearestIndex !== -1) {
       const nextStudent = unvisitedStudents.splice(nearestIndex, 1)[0];
+      const distanceKm = minDist;
+      const etaMinutes = calculateETA(distanceKm);
       
       routePoints.push(nextStudent.location);
       orderedStops.push({
@@ -211,7 +233,7 @@ export const optimizeRoute = (
         location: nextStudent.location,
         completed: false,
         type: 'PICKUP',
-        eta: `${Math.ceil(minDist * 1000)} min` // Mock ETA based on distance
+        eta: `${etaMinutes} min`
       });
       
       currentLocation = nextStudent.location;
@@ -219,13 +241,15 @@ export const optimizeRoute = (
   }
 
   // 3. Add School as final destination
+  const schoolDistance = getDistance(currentLocation, schoolLocation);
+  const schoolETA = calculateETA(schoolDistance);
   routePoints.push(schoolLocation);
   orderedStops.push({
     id: 'school-dropoff',
     location: schoolLocation,
     completed: false,
     type: 'SCHOOL',
-    eta: 'Final'
+    eta: `${schoolETA} min`
   });
 
   return { routePoints, routeManifest: orderedStops };

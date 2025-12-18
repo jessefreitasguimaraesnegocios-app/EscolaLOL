@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Vehicle, Student, RouteStop, Language } from '../types';
+import { Vehicle, Student, RouteStop, Language, Coordinates } from '../types';
 import MapEngine from './MapEngine';
-// Added Bus to the imports from lucide-react to fix the 'Cannot find name Bus' error
-import { Navigation, CheckCircle, MapPin, Users, Plus, Phone, CreditCard, X, Route as RouteIcon, Bus } from 'lucide-react';
+import { Navigation, CheckCircle, MapPin, Users, Plus, Phone, CreditCard, X, Route as RouteIcon, Bus, Clock, ArrowRight, User, ChevronRight, School, ArrowLeft, ArrowUp } from 'lucide-react';
 import { t } from '../services/i18n';
-import { optimizeRoute } from '../services/mockData';
+import { optimizeRoute, getDistance, calculateETA } from '../services/mockData';
+import { getNextInstruction, NavigationInstruction } from '../services/navigationService';
 
 interface DriverInterfaceProps {
   vehicle: Vehicle;
@@ -21,15 +21,38 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
   const [activeStopId, setActiveStopId] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [dynamicRoute, setDynamicRoute] = useState<RouteStop[]>([]);
+  const [completedStops, setCompletedStops] = useState<Set<string>>(new Set());
+  const [navigationInstruction, setNavigationInstruction] = useState<NavigationInstruction | null>(null);
+  const [navigationMode, setNavigationMode] = useState(true);
+  const [currentRoutePoints, setCurrentRoutePoints] = useState<Coordinates[]>([]);
 
   useEffect(() => {
-    const { routeManifest } = optimizeRoute(vehicle.location, passengers, vehicle.destinationSchool);
+    const { routeManifest, routePoints } = optimizeRoute(vehicle.location, passengers, vehicle.destinationSchool);
     setDynamicRoute(routeManifest);
-    setActiveStopId(routeManifest.find(r => !r.completed)?.id || '');
-  }, [passengers, vehicle.location, vehicle.destinationSchool]);
+    setCurrentRoutePoints(routePoints);
+    const nextUncompleted = routeManifest.find(r => !r.completed && !completedStops.has(r.id));
+    setActiveStopId(nextUncompleted?.id || '');
+    
+    // Generate navigation instruction
+    if (nextUncompleted && routePoints.length > 1) {
+      const destinationName = nextUncompleted.type === 'SCHOOL' 
+        ? vehicle.destinationSchool 
+        : passengers.find(p => p.id === nextUncompleted.studentId)?.name || 'Destino';
+      const instruction = getNextInstruction(vehicle.location, routePoints, destinationName);
+      setNavigationInstruction(instruction);
+    }
+  }, [passengers, vehicle.location, vehicle.destinationSchool, completedStops]);
 
   const nextStop = dynamicRoute.find(r => r.id === activeStopId);
   const isFull = passengers.length >= vehicle.capacity;
+  
+  const handleCompleteStop = (stopId: string) => {
+    setCompletedStops(prev => new Set([...prev, stopId]));
+  };
+
+  const handleCallStudent = (phone: string) => {
+    window.open(`tel:${phone}`, '_self');
+  };
 
   return (
     <div className="flex flex-col h-full bg-hextech-black">
@@ -52,11 +75,24 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
               {passengers.length} / {vehicle.capacity}
             </div>
           </div>
-          <button 
-            onClick={() => onOptimizeRoute(vehicle.id, passengers)}
-            className="hextech-button-primary px-4 py-2 text-xs flex items-center gap-2">
-            <RouteIcon size={16} /> <span className="hidden sm:inline">{t('optimize_route', lang)}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setNavigationMode(!navigationMode)}
+              className={`px-3 py-2 text-xs flex items-center gap-2 border transition-all ${
+                navigationMode 
+                  ? 'bg-hextech-blue/30 border-hextech-blue text-hextech-blue' 
+                  : 'bg-hextech-dark border-hextech-gold/30 text-hextech-gold hover:border-hextech-gold'
+              }`}
+              title={navigationMode ? 'Desativar Navegação' : 'Ativar Navegação'}
+            >
+              <Navigation size={16} />
+            </button>
+            <button 
+              onClick={() => onOptimizeRoute(vehicle.id, passengers)}
+              className="hextech-button-primary px-4 py-2 text-xs flex items-center gap-2">
+              <RouteIcon size={16} /> <span className="hidden sm:inline">{t('optimize_route', lang)}</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -67,25 +103,96 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
           students={passengers} 
           showRoutes={true}
           highlightVehicleId={vehicle.id}
-          className="h-full w-full opacity-80"
+          navigationMode={navigationMode}
+          currentRoute={currentRoutePoints}
+          className="h-full w-full"
         />
         
-        {/* Navigation Overlay - LoL Style MATCH INFO */}
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[90%] max-w-lg bg-hextech-dark/95 border border-hextech-gold/40 p-1 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-          <div className="border border-hextech-gold/20 p-4 flex items-center gap-4">
-            <div className="p-3 bg-hextech-blue/20 border border-hextech-blue text-hextech-blue animate-pulse">
-              <Navigation size={28} />
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <div className="text-[10px] text-hextech-gold font-beaufort tracking-[0.2em] uppercase mb-1">
-                {t('next_stop', lang)} • {nextStop?.eta || '---'}
-              </div>
-              <div className="text-lg font-beaufort font-bold text-white tracking-widest truncate">
-                {nextStop?.type === 'SCHOOL' ? vehicle.destinationSchool : passengers.find(p => p.id === nextStop?.studentId)?.address || '...'}
+        {/* Navigation Card - Waze Style with Hextech Theme */}
+        {nextStop && navigationInstruction && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-lg z-30">
+            <div className="bg-hextech-dark/98 border-2 border-hextech-gold/50 p-1 shadow-[0_0_40px_rgba(195,167,88,0.3)]">
+              <div className="bg-hextech-black/95 border border-hextech-gold/30 p-6">
+                {/* Navigation Instruction - Waze Style */}
+                <div className="flex items-center gap-4 mb-4">
+                  <div className={`p-4 border-2 rounded-lg ${
+                    navigationInstruction.type === 'turn-left' 
+                      ? 'bg-orange-500/20 border-orange-500' 
+                      : navigationInstruction.type === 'turn-right'
+                        ? 'bg-green-500/20 border-green-500'
+                        : 'bg-hextech-blue/30 border-hextech-blue'
+                  }`}>
+                    {navigationInstruction.type === 'turn-left' ? (
+                      <ArrowLeft size={32} className="text-orange-400" />
+                    ) : navigationInstruction.type === 'turn-right' ? (
+                      <ArrowRight size={32} className="text-green-400" />
+                    ) : (
+                      <ArrowUp size={32} className="text-hextech-blue" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-2xl font-beaufort font-bold text-white mb-1">
+                      {navigationInstruction.instruction}
+                    </div>
+                    {navigationInstruction.distance > 0 && (
+                      <div className="text-sm text-hextech-gold/80 font-beaufort uppercase tracking-wider">
+                        {navigationInstruction.distance}m restantes
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Destination Info */}
+                <div className="border-t border-hextech-gold/20 pt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="text-xs font-beaufort text-hextech-gold/80 tracking-widest uppercase mb-1">
+                        {nextStop.type === 'SCHOOL' ? t('drop_off_school', lang) : t('next_stop', lang)}
+                      </div>
+                      <h3 className="text-lg font-beaufort font-bold text-white tracking-wider truncate">
+                        {nextStop.type === 'SCHOOL' 
+                          ? vehicle.destinationSchool 
+                          : passengers.find(p => p.id === nextStop.studentId)?.name || '...'}
+                      </h3>
+                      {nextStop.type !== 'SCHOOL' && (
+                        <p className="text-xs text-hextech-gray/60 uppercase tracking-widest flex items-center gap-1 mt-1">
+                          <MapPin size={12} /> {passengers.find(p => p.id === nextStop.studentId)?.address || '...'}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-hextech-blue ml-4">
+                      <Clock size={16} />
+                      <span className="text-lg font-bold">{nextStop.eta}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  {nextStop.type !== 'SCHOOL' && (() => {
+                    const student = passengers.find(p => p.id === nextStop.studentId);
+                    return student && (
+                      <div className="flex items-center gap-3 mt-4">
+                        <button
+                          onClick={() => handleCallStudent(student.phone)}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-hextech-blue/20 border border-hextech-blue text-hextech-blue hover:bg-hextech-blue/30 transition-all text-xs font-beaufort uppercase tracking-wider"
+                        >
+                          <Phone size={14} /> {t('call', lang)}
+                        </button>
+                        {!completedStops.has(nextStop.id) && (
+                          <button
+                            onClick={() => handleCompleteStop(nextStop.id)}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-hextech-gold/20 border border-hextech-gold text-hextech-gold hover:bg-hextech-gold/30 transition-all text-xs font-beaufort uppercase tracking-wider"
+                          >
+                            <CheckCircle size={14} /> Confirmar
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Bottom Manifest Panel */}
@@ -102,38 +209,115 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {dynamicRoute.map((stop, idx) => {
             const isNext = stop.id === activeStopId;
-            const isDone = stop.completed;
+            const isDone = stop.completed || completedStops.has(stop.id);
             const student = passengers.find(p => p.id === stop.studentId);
+            const distance = stop.type === 'SCHOOL' 
+              ? getDistance(vehicle.location, stop.location)
+              : student 
+                ? getDistance(vehicle.location, student.location)
+                : 0;
+            const eta = calculateETA(distance);
             
             return (
-              <div key={stop.id} className={`flex items-center gap-4 p-3 border ${isNext ? 'bg-hextech-blue/10 border-hextech-blue shadow-[inset_0_0_15px_rgba(31,78,140,0.2)]' : 'bg-hextech-black/20 border-hextech-gold/10'} transition-all`}>
-                <div className={`w-8 h-8 flex items-center justify-center font-beaufort font-bold border ${isDone ? 'border-green-500 text-green-500' : isNext ? 'border-hextech-blue text-hextech-blue' : 'border-hextech-gold/30 text-hextech-gold/40'}`}>
-                  {idx + 1}
+              <div 
+                key={stop.id} 
+                className={`relative flex items-center gap-4 p-4 border-2 rounded transition-all ${
+                  isDone 
+                    ? 'bg-hextech-black/30 border-green-500/30 opacity-60' 
+                    : isNext 
+                      ? 'bg-hextech-blue/20 border-hextech-blue shadow-[0_0_20px_rgba(31,78,140,0.4)] scale-[1.02]' 
+                      : 'bg-hextech-black/40 border-hextech-gold/20 hover:border-hextech-gold/40'
+                }`}
+              >
+                {/* Status Indicator */}
+                <div className="flex flex-col items-center gap-2">
+                  <div className={`w-10 h-10 flex items-center justify-center font-beaufort font-bold border-2 rounded-full ${
+                    isDone 
+                      ? 'border-green-500 bg-green-500/20 text-green-500' 
+                      : isNext 
+                        ? 'border-hextech-blue bg-hextech-blue/30 text-hextech-blue animate-pulse' 
+                        : 'border-hextech-gold/40 bg-hextech-gold/10 text-hextech-gold/60'
+                  }`}>
+                    {isDone ? <CheckCircle size={20} /> : idx + 1}
+                  </div>
+                  {isNext && (
+                    <div className="w-1 h-8 bg-hextech-blue animate-pulse"></div>
+                  )}
                 </div>
                 
-                <div className="flex-1">
-                  <div className={`font-beaufort tracking-wider text-xs uppercase ${isDone ? 'text-hextech-gray/40 line-through' : isNext ? 'text-white' : 'text-hextech-gray'}`}>
-                    {stop.type === 'SCHOOL' ? t('drop_off_school', lang) : student?.name}
+                {/* Student/School Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className={`font-beaufort tracking-wider text-sm uppercase ${
+                      isDone ? 'text-hextech-gray/40 line-through' : isNext ? 'text-white font-bold' : 'text-hextech-gray'
+                    }`}>
+                      {stop.type === 'SCHOOL' ? (
+                        <div className="flex items-center gap-2">
+                          <School size={16} className="text-hextech-blue" />
+                          {vehicle.destinationSchool}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <User size={16} className="text-hextech-gold" />
+                          {student?.name || '...'}
+                        </div>
+                      )}
+                    </div>
+                    {!isDone && (
+                      <div className="flex items-center gap-1 text-hextech-blue text-xs font-beaufort">
+                        <Clock size={12} />
+                        <span className="font-bold">{eta} min</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-[10px] text-hextech-gold/40 uppercase tracking-widest flex items-center gap-1 mt-0.5">
-                    <MapPin size={10} /> {stop.type === 'SCHOOL' ? vehicle.destinationSchool : student?.address}
+                  <div className="text-xs text-hextech-gold/60 uppercase tracking-widest flex items-center gap-1 mb-2">
+                    <MapPin size={12} /> 
+                    <span className="truncate">
+                      {stop.type === 'SCHOOL' ? vehicle.destinationSchool : student?.address || '...'}
+                    </span>
                   </div>
+                  {student && !isDone && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-[10px] text-hextech-gray/50 uppercase">
+                        {distance.toFixed(1)} km
+                      </span>
+                      <span className="text-hextech-gold/30">•</span>
+                      <span className="text-[10px] text-hextech-gray/50">
+                        {student.phone}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {student && !isDone && (
-                   <div className="flex gap-2">
-                      <div className="p-2 border border-hextech-gold/20 text-hextech-gold/60"><Phone size={14} /></div>
-                      <div className="p-2 border border-hextech-gold/20 text-hextech-gold/60"><CreditCard size={14} /></div>
-                   </div>
+                {/* Action Buttons */}
+                {!isDone && student && (
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => handleCallStudent(student.phone)}
+                      className="p-2 border border-hextech-blue/50 text-hextech-blue hover:bg-hextech-blue/20 transition-all rounded"
+                      title={t('call', lang)}
+                    >
+                      <Phone size={16} />
+                    </button>
+                    {isNext && (
+                      <button
+                        onClick={() => handleCompleteStop(stop.id)}
+                        className="p-2 border border-hextech-gold/50 text-hextech-gold hover:bg-hextech-gold/20 transition-all rounded"
+                        title="Confirmar chegada"
+                      >
+                        <CheckCircle size={16} />
+                      </button>
+                    )}
+                  </div>
                 )}
-
-                {isNext && (
-                  <button className="bg-hextech-blue p-2 border border-hextech-buttonBlue text-white hover:brightness-125">
-                    <CheckCircle size={18} />
-                  </button>
+                
+                {isDone && (
+                  <div className="text-green-500">
+                    <CheckCircle size={24} />
+                  </div>
                 )}
               </div>
             );
