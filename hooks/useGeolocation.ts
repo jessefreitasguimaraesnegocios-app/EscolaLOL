@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Coordinates } from '../types';
 
+export interface GeolocationData extends Coordinates {
+  heading?: number; // Bearing/direction in degrees (0-360)
+  speed?: number; // Speed in m/s
+  accuracy?: number; // Accuracy in meters
+}
+
 interface GeolocationState {
-  location: Coordinates | null;
+  location: GeolocationData | null;
   loading: boolean;
   error: string | null;
 }
 
 export const useGeolocation = (enabled: boolean = true): GeolocationState => {
-  const [location, setLocation] = useState<Coordinates | null>(null);
+  const [location, setLocation] = useState<GeolocationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +40,14 @@ export const useGeolocation = (enabled: boolean = true): GeolocationState => {
       (position) => {
         setLocation({
           lat: position.coords.latitude,
-          lng: position.coords.longitude
+          lng: position.coords.longitude,
+          heading: position.coords.heading !== null && position.coords.heading !== undefined 
+            ? position.coords.heading 
+            : undefined,
+          speed: position.coords.speed !== null && position.coords.speed !== undefined
+            ? position.coords.speed
+            : undefined,
+          accuracy: position.coords.accuracy
         });
         setLoading(false);
         setError(null);

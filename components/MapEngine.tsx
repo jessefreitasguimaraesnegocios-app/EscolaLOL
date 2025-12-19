@@ -1,19 +1,25 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Coordinates, Vehicle, Student } from '../types';
 import mapboxgl from 'mapbox-gl';
 import { createRoot } from 'react-dom/client';
 import { Bus, MapPin, School } from 'lucide-react';
+import { GeolocationData } from '../hooks/useGeolocation';
+import { getMapboxRoute, MapboxRoute } from '../services/mapboxDirectionsService';
 
 interface MapEngineProps {
   vehicles: Vehicle[];
   students?: Student[];
-  userLocation?: Coordinates;
+  userLocation?: Coordinates | GeolocationData;
   showRoutes?: boolean;
   highlightVehicleId?: string;
   onVehicleClick?: (vehicle: Vehicle) => void;
   className?: string;
   navigationMode?: boolean; // Waze-style navigation mode
-  currentRoute?: Coordinates[]; // Current route for navigation
+  currentRoute?: Coordinates[]; // Current route for navigation (fallback)
+  followDriver?: boolean; // Follow driver GPS in real-time
+  useMapboxDirections?: boolean; // Use Mapbox Directions API for real routes
+  schoolLocation?: Coordinates; // School destination for route calculation
+  mapboxRoute?: MapboxRoute | null; // Pre-calculated Mapbox route (Uber style)
 }
 
 // Custom Marker Component helpers
@@ -44,12 +50,21 @@ const MapEngine: React.FC<MapEngineProps> = ({
   onVehicleClick,
   className = "",
   navigationMode = false,
-  currentRoute = []
+  currentRoute = [],
+  followDriver = false,
+  useMapboxDirections = false,
+  schoolLocation,
+  mapboxRoute: externalMapboxRoute
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const rootsRef = useRef<Map<string, any>>(new Map());
+  const [mapboxRoute, setMapboxRoute] = useState<MapboxRoute | null>(null);
+  const routeSourceId = 'mapbox-route';
+  
+  // Use external route if provided, otherwise use internal state
+  const activeRoute = externalMapboxRoute !== undefined ? externalMapboxRoute : mapboxRoute;
 
   // Initialize Map
   useEffect(() => {
@@ -204,8 +219,8 @@ const MapEngine: React.FC<MapEngineProps> = ({
         }
       });
 
-      // 3. Routes
-      if (showRoutes) {
+      // 3. Routes - Use Mapbox Directions API if enabled, otherwise use fallback
+      if (showRoutes && !useMapboxDirections) {
          vehicles.forEach(vehicle => {
             // Use currentRoute if provided, otherwise use vehicle.route
             const routeToUse = highlightVehicleId === vehicle.id && currentRoute.length > 0 ? currentRoute : vehicle.route;
@@ -257,11 +272,156 @@ const MapEngine: React.FC<MapEngineProps> = ({
          });
       }
     } catch (e) {}
-  }, [vehicles, students, highlightVehicleId, showRoutes, navigationMode, currentRoute]);
+  }, [vehicles, students, highlightVehicleId, showRoutes, navigationMode, currentRoute, useMapboxDirections]);
 
-  // Navigation mode: Follow vehicle and update camera
+  // Fetch Mapbox Directions API route (only if external route not provided)
   useEffect(() => {
-    if (navigationMode && highlightVehicleId && map.current) {
+    if (externalMapboxRoute !== undefined) return; // Use external route
+    
+    if (!useMapboxDirections || !showRoutes || !map.current || !map.current.isStyleLoaded()) return;
+    
+    const mainVehicle = vehicles.find(v => v.id === highlightVehicleId);
+    if (!mainVehicle || !schoolLocation) return;
+
+    // Get waiting students locations
+    const waitingStudents = students?.filter(s => s.status === 'WAITING') || [];
+    
+    // Only fetch if we have students or a fallback route
+    if (waitingStudents.length === 0) {
+      // If no waiting students, clear the route
+      setMapboxRoute(null);
+      return;
+    }
+
+    const fetchRoute = async () => {
+      try {
+        // Use sorted students locations (already sorted by distance)
+        const studentLocations = waitingStudents.map(s => s.location);
+        
+        const route = await getMapboxRoute(
+          mainVehicle.location,
+          studentLocations,
+          schoolLocation
+        );
+
+        if (route) {
+          setMapboxRoute(route);
+        } else {
+          // Fallback to currentRoute if Mapbox fails
+          setMapboxRoute(null);
+        }
+      } catch (error) {
+        console.error('Error fetching Mapbox route:', error);
+        // Fallback to currentRoute on error
+        setMapboxRoute(null);
+      }
+    };
+
+    // Debounce route fetching to avoid too many API calls
+    const timeoutId = setTimeout(fetchRoute, 500);
+    return () => clearTimeout(timeoutId);
+  }, [useMapboxDirections, showRoutes, vehicles, students, highlightVehicleId, schoolLocation, externalMapboxRoute]);
+
+  // Draw Mapbox route on map
+  useEffect(() => {
+    if (!activeRoute || !map.current || !map.current.isStyleLoaded()) return;
+
+    try {
+      const routeData = {
+        type: 'Feature' as const,
+        geometry: activeRoute.geometry
+      };
+
+      // Remove existing route if present
+      if (map.current.getLayer(routeSourceId)) {
+        map.current.removeLayer(routeSourceId);
+      }
+      if (map.current.getLayer(`${routeSourceId}-outline`)) {
+        map.current.removeLayer(`${routeSourceId}-outline`);
+      }
+      if (map.current.getSource(routeSourceId)) {
+        map.current.removeSource(routeSourceId);
+      }
+
+      // Add route source
+      map.current.addSource(routeSourceId, {
+        type: 'geojson',
+        data: routeData
+      });
+
+      // Add route outline (for better visibility)
+      if (navigationMode) {
+        map.current.addLayer({
+          id: `${routeSourceId}-outline`,
+          type: 'line',
+          source: routeSourceId,
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': '#010A13',
+            'line-width': 8,
+            'line-opacity': 0.3
+          }
+        });
+      }
+
+      // Add route layer
+      map.current.addLayer({
+        id: routeSourceId,
+        type: 'line',
+        source: routeSourceId,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-width': navigationMode ? 6 : 4,
+          'line-color': navigationMode ? '#C3A758' : '#1F4E8C',
+          'line-opacity': 0.9
+        }
+      });
+    } catch (error) {
+      console.error('Error drawing Mapbox route:', error);
+    }
+  }, [activeRoute, navigationMode]);
+
+  // Real-time GPS following: Watch driver position and update camera dynamically
+  useEffect(() => {
+    if (followDriver && navigationMode && map.current && map.current.isStyleLoaded() && userLocation) {
+      // Get heading from GPS data (if available)
+      const heading = (userLocation as GeolocationData).heading;
+      
+      // Calculate bearing: use GPS heading if available, otherwise calculate from route
+      let bearing = heading !== undefined && heading !== null ? heading : 0;
+      
+      if (bearing === 0 && currentRoute && currentRoute.length >= 2) {
+        // Fallback: calculate bearing from route if GPS heading not available
+        const currentIdx = currentRoute.findIndex(
+          pt => Math.abs(pt.lat - userLocation.lat) < 0.0001 && Math.abs(pt.lng - userLocation.lng) < 0.0001
+        );
+        if (currentIdx >= 0 && currentIdx < currentRoute.length - 1) {
+          const next = currentRoute[currentIdx + 1];
+          const dx = next.lng - userLocation.lng;
+          const dy = next.lat - userLocation.lat;
+          bearing = (Math.atan2(dx, dy) * 180) / Math.PI;
+        }
+      }
+
+      // Dynamic camera follow with smooth transitions (Waze-style)
+      try {
+        map.current.easeTo({
+          center: [userLocation.lng, userLocation.lat],
+          zoom: 16, // Fixed zoom for navigation
+          bearing: bearing || 0,
+          pitch: 60,
+          duration: 1000,
+          essential: true
+        });
+      } catch(e) {
+        console.error('Error updating camera:', e);
+      }
+    }
+  }, [userLocation, navigationMode, followDriver, currentRoute]);
+
+  // Navigation mode: Follow vehicle and update camera (fallback for non-GPS mode)
+  useEffect(() => {
+    if (!followDriver && navigationMode && highlightVehicleId && map.current) {
       const v = vehicles?.find(v => v.id === highlightVehicleId);
       if (v?.location && typeof v.location.lat === 'number') {
         try {
@@ -290,7 +450,7 @@ const MapEngine: React.FC<MapEngineProps> = ({
           });
         } catch(e) {}
       }
-    } else if (highlightVehicleId && map.current) {
+    } else if (!followDriver && highlightVehicleId && map.current) {
       // Normal mode: just center on vehicle
       const v = vehicles?.find(v => v.id === highlightVehicleId);
       if (v?.location && typeof v.location.lat === 'number') {
@@ -299,7 +459,7 @@ const MapEngine: React.FC<MapEngineProps> = ({
         } catch(e) {}
       }
     }
-  }, [highlightVehicleId, vehicles, navigationMode, currentRoute]);
+  }, [highlightVehicleId, vehicles, navigationMode, currentRoute, followDriver]);
 
   // Center map on user location when available
   useEffect(() => {

@@ -10,6 +10,13 @@ import { ShieldCheck, User as UserIcon, Bus, Globe } from 'lucide-react';
 import { t } from './services/i18n';
 import { useGeolocation } from './hooks/useGeolocation';
 import { authService } from './services/authService';
+import { 
+  subscribeToVanLocation, 
+  subscribeToAllVans,
+  subscribeToStudentLocation,
+  subscribeToAllStudents,
+  subscribeToStudentsByVan
+} from './services/firestoreService';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -62,15 +69,134 @@ const App: React.FC = () => {
     }
   }, [userGPSLocation, currentRole, useRealGPS]);
 
-  // Simulate vehicle movement only if NOT using real GPS
+  // Real-time Firestore listeners for vans
   useEffect(() => {
-    if (!useRealGPS && vehicles && vehicles.length > 0) {
+    if (!isAuthenticated || currentRole !== UserRole.DRIVER) return;
+
+    const mainVehicle = vehicles.find(v => v.id);
+    if (!mainVehicle) return;
+
+    // Subscribe to main vehicle location updates from Firestore
+    const unsubscribeVan = subscribeToVanLocation(mainVehicle.id, (location) => {
+      if (location) {
+        setVehicles(prevVehicles =>
+          prevVehicles.map(v =>
+            v.id === mainVehicle.id
+              ? { ...v, location: { lat: location.lat, lng: location.lng } }
+              : v
+          )
+        );
+      }
+    });
+
+    // Subscribe to all vans (for admin view or multi-vehicle tracking)
+    const unsubscribeAllVans = subscribeToAllVans((vans) => {
+      // Update vehicles with Firestore data
+      setVehicles(prevVehicles =>
+        prevVehicles.map(v => {
+          const firestoreVan = vans.find(fv => fv.id === v.id);
+          if (firestoreVan) {
+            return { ...v, location: { lat: firestoreVan.lat, lng: firestoreVan.lng } };
+          }
+          return v;
+        })
+      );
+    });
+
+    return () => {
+      unsubscribeVan();
+      unsubscribeAllVans();
+    };
+  }, [isAuthenticated, currentRole, vehicles]);
+
+  // Real-time Firestore listeners for students
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const mainVehicle = vehicles.find(v => v.id);
+    
+    // Subscribe to students by van (for driver view)
+    if (currentRole === UserRole.DRIVER && mainVehicle) {
+      const unsubscribeStudents = subscribeToStudentsByVan(mainVehicle.id, (firestoreStudents) => {
+        setStudents(prevStudents =>
+          prevStudents.map(s => {
+            const firestoreStudent = firestoreStudents.find(fs => fs.id === s.id);
+            if (firestoreStudent) {
+              return {
+                ...s,
+                location: { lat: firestoreStudent.lat, lng: firestoreStudent.lng },
+                status: firestoreStudent.pickedUp ? 'PICKED_UP' : 'WAITING'
+              };
+            }
+            return s;
+          })
+        );
+      });
+
+      return () => {
+        unsubscribeStudents();
+      };
+    }
+
+    // Subscribe to all students (for admin view)
+    if (currentRole === UserRole.ADMIN) {
+      const unsubscribeAllStudents = subscribeToAllStudents((firestoreStudents) => {
+        setStudents(prevStudents =>
+          prevStudents.map(s => {
+            const firestoreStudent = firestoreStudents.find(fs => fs.id === s.id);
+            if (firestoreStudent) {
+              return {
+                ...s,
+                location: { lat: firestoreStudent.lat, lng: firestoreStudent.lng },
+                status: firestoreStudent.pickedUp ? 'PICKED_UP' : 'WAITING'
+              };
+            }
+            return s;
+          })
+        );
+      });
+
+      return () => {
+        unsubscribeAllStudents();
+      };
+    }
+
+    // Subscribe to current student location (for passenger view)
+    if (currentRole === UserRole.PASSENGER && currentUser) {
+      const currentStudent = students.find(s => s.id === currentUser.id);
+      if (currentStudent) {
+        const unsubscribeStudent = subscribeToStudentLocation(currentStudent.id, (location) => {
+          if (location) {
+            setStudents(prevStudents =>
+              prevStudents.map(s =>
+                s.id === currentStudent.id
+                  ? {
+                      ...s,
+                      location: { lat: location.lat, lng: location.lng },
+                      status: location.pickedUp ? 'PICKED_UP' : 'WAITING'
+                    }
+                  : s
+              )
+            );
+          }
+        });
+
+        return () => {
+          unsubscribeStudent();
+        };
+      }
+    }
+  }, [isAuthenticated, currentRole, currentUser, vehicles, students]);
+
+  // Simulate vehicle movement only if NOT using real GPS and NOT using Firestore
+  useEffect(() => {
+    if (!useRealGPS && vehicles && vehicles.length > 0 && !isAuthenticated) {
       const interval = setInterval(() => {
         setVehicles(prevVehicles => moveVehicles(prevVehicles || []));
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [useRealGPS, vehicles]);
+  }, [useRealGPS, vehicles, isAuthenticated]);
 
   const handleUpdateVehicle = (vehicleId: string, updates: Partial<Vehicle>) => {
     setVehicles(prevVehicles => 

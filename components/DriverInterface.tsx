@@ -3,9 +3,17 @@ import { Vehicle, Student, RouteStop, Language, Coordinates } from '../types';
 import MapEngine from './MapEngine';
 import { Navigation, CheckCircle, MapPin, Users, Plus, Phone, CreditCard, X, Route as RouteIcon, Bus, Clock, ArrowRight, User, ChevronRight, School, ArrowLeft, ArrowUp, Bell } from 'lucide-react';
 import { t } from '../services/i18n';
-import { optimizeRoute, getDistance, calculateETA } from '../services/mockData';
+import { optimizeRoute, getDistance, calculateETA, sortStudentsByDistance } from '../services/mockData';
 import { getNextInstruction, NavigationInstruction } from '../services/navigationService';
 import { notificationService } from '../services/notificationService';
+import { updateVanLocation } from '../services/firestoreService';
+import { 
+  isOffRoute, 
+  recalculateRoute, 
+  getRouteETA,
+  distanceFromRoute 
+} from '../services/uberNavigationService';
+import { getMapboxRoute, MapboxRoute } from '../services/mapboxDirectionsService';
 
 interface DriverInterfaceProps {
   vehicle: Vehicle;
@@ -33,6 +41,12 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
   const [dragStartHeight, setDragStartHeight] = useState(35);
   const [headerHeight, setHeaderHeight] = useState(0);
   const [notifications, setNotifications] = useState(0);
+  const [gpsStatus, setGpsStatus] = useState<'idle' | 'sending' | 'error'>('idle');
+  const [sortedPassengers, setSortedPassengers] = useState<Student[]>([]);
+  const [mapboxRoute, setMapboxRoute] = useState<MapboxRoute | null>(null);
+  const [routeETA, setRouteETA] = useState<number>(0);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [lastRouteCheck, setLastRouteCheck] = useState<Coordinates | null>(null);
   
   // Measure header height
   useEffect(() => {
@@ -41,6 +55,85 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
       setHeaderHeight(header.offsetHeight);
     }
   }, []);
+
+  // Send GPS location to Firestore every 2-5 seconds
+  useEffect(() => {
+    if (!vehicle?.id) return;
+
+    if (!navigator.geolocation) {
+      setGpsStatus('error');
+      console.warn('Geolocation is not supported by this browser');
+      return;
+    }
+
+    let watchId: number | null = null;
+    let lastSentTime = 0;
+    const SEND_INTERVAL = 3000; // Send to Firestore every 3 seconds
+    const GPS_TIMEOUT = 10000; // 10 seconds timeout for GPS
+
+    const sendLocationToFirestore = async (position: GeolocationPosition) => {
+      const now = Date.now();
+      // Throttle: only send to Firestore every 3 seconds
+      if (now - lastSentTime < SEND_INTERVAL) {
+        return;
+      }
+
+      try {
+        await updateVanLocation(
+          vehicle.id,
+          position.coords.latitude,
+          position.coords.longitude
+        );
+        setGpsStatus('idle');
+        lastSentTime = now;
+      } catch (error) {
+        console.error('Error updating van location in Firestore:', error);
+        setGpsStatus('error');
+      }
+    };
+
+    // Use watchPosition for continuous updates (more efficient than getCurrentPosition in a loop)
+    try {
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          setGpsStatus('idle');
+          sendLocationToFirestore(position);
+        },
+        (error) => {
+          // Only log error if it's not a timeout (timeouts are common and not critical)
+          if (error.code !== error.TIMEOUT) {
+            console.warn('GPS error:', error.message);
+          }
+          
+          // Set error status only for critical errors
+          if (error.code === error.PERMISSION_DENIED) {
+            setGpsStatus('error');
+            console.error('GPS permission denied. Please enable location access.');
+          } else if (error.code === error.POSITION_UNAVAILABLE) {
+            setGpsStatus('error');
+            console.error('GPS position unavailable.');
+          } else {
+            // For timeout, keep trying but don't show as error
+            setGpsStatus('idle');
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: GPS_TIMEOUT,
+          maximumAge: 5000 // Accept cached position up to 5 seconds old
+        }
+      );
+    } catch (error) {
+      console.error('Error setting up GPS watch:', error);
+      setGpsStatus('error');
+    }
+
+    return () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }, [vehicle.id]);
 
   // Check for notifications
   useEffect(() => {
@@ -55,8 +148,121 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
     return () => clearInterval(interval);
   }, [vehicle.id]);
 
+  // Sort students by distance from van (Uber style) - Updates whenever van moves
   useEffect(() => {
-    const { routeManifest, routePoints } = optimizeRoute(vehicle.location, passengers, vehicle.destinationSchool);
+    if (passengers.length > 0 && vehicle.location) {
+      // Sort students: nearest to farthest
+      const sorted = sortStudentsByDistance(vehicle.location, passengers);
+      setSortedPassengers(sorted);
+    } else {
+      setSortedPassengers(passengers);
+    }
+  }, [vehicle.location, passengers]);
+
+  // Initial route calculation with Mapbox
+  useEffect(() => {
+    if (!vehicle.location || !navigationMode) return;
+    
+    const calculateInitialRoute = async () => {
+      setIsRecalculating(true);
+      try {
+        const waitingStudents = sortedPassengers.filter(s => s.status === 'WAITING');
+        const waitingLocations = waitingStudents.map(s => s.location);
+        
+        if (waitingLocations.length === 0) {
+          setMapboxRoute(null);
+          setIsRecalculating(false);
+          return;
+        }
+        
+        const schoolLocation = { lat: -23.5505, lng: -46.6333 }; // TODO: Get from vehicle.destinationSchool
+        
+        const route = await getMapboxRoute(
+          vehicle.location,
+          waitingLocations,
+          schoolLocation
+        );
+        
+        if (route) {
+          setMapboxRoute(route);
+          setRouteETA(getRouteETA(route));
+        }
+      } catch (error) {
+        console.error('Error calculating initial route:', error);
+      } finally {
+        setIsRecalculating(false);
+      }
+    };
+
+    calculateInitialRoute();
+  }, [vehicle.location, sortedPassengers, navigationMode]);
+
+  // Check if driver is off route and recalculate (Uber style)
+  useEffect(() => {
+    if (!mapboxRoute || !vehicle.location || !navigationMode || isRecalculating) return;
+    
+    // Check every 5 seconds if driver is off route
+    const checkInterval = setInterval(() => {
+      if (!mapboxRoute.geometry || isRecalculating) return;
+      
+      // Check if driver is more than 30 meters away from route
+      const isOff = isOffRoute(vehicle.location, mapboxRoute.geometry, 30);
+      
+      if (isOff) {
+        console.log('Driver is off route! Recalculating...');
+        setIsRecalculating(true);
+        
+        // Recalculate route
+        const waitingStudents = sortedPassengers.filter(s => s.status === 'WAITING');
+        const waitingLocations = waitingStudents.map(s => s.location);
+        
+        if (waitingLocations.length === 0) {
+          setMapboxRoute(null);
+          setIsRecalculating(false);
+          return;
+        }
+        
+        const schoolLocation = { lat: -23.5505, lng: -46.6333 };
+        
+        recalculateRoute(vehicle.location, waitingLocations, schoolLocation)
+          .then(newRoute => {
+            if (newRoute) {
+              setMapboxRoute(newRoute);
+              setRouteETA(getRouteETA(newRoute));
+            }
+            setIsRecalculating(false);
+          })
+          .catch(error => {
+            console.error('Error recalculating route:', error);
+            setIsRecalculating(false);
+          });
+      }
+    }, 5000); // Check every 5 seconds
+    
+    return () => clearInterval(checkInterval);
+  }, [mapboxRoute, vehicle.location, navigationMode, isRecalculating, sortedPassengers]);
+
+  // Update ETA in real-time
+  useEffect(() => {
+    if (!mapboxRoute) {
+      setRouteETA(0);
+      return;
+    }
+    
+    // Update ETA every 10 seconds
+    const etaInterval = setInterval(() => {
+      const eta = getRouteETA(mapboxRoute);
+      setRouteETA(eta);
+    }, 10000);
+    
+    return () => clearInterval(etaInterval);
+  }, [mapboxRoute]);
+
+  // Optimize route using sorted passengers (Uber style)
+  useEffect(() => {
+    // Use sorted passengers for route optimization
+    const passengersToUse = sortedPassengers.length > 0 ? sortedPassengers : passengers;
+    const { routeManifest, routePoints } = optimizeRoute(vehicle.location, passengersToUse, vehicle.destinationSchool);
     setDynamicRoute(routeManifest);
     setCurrentRoutePoints(routePoints);
     const nextUncompleted = routeManifest.find(r => !r.completed && !completedStops.has(r.id));
@@ -66,17 +272,53 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
     if (nextUncompleted && routePoints.length > 1) {
       const destinationName = nextUncompleted.type === 'SCHOOL' 
         ? vehicle.destinationSchool 
-        : passengers.find(p => p.id === nextUncompleted.studentId)?.name || 'Destino';
+        : passengersToUse.find(p => p.id === nextUncompleted.studentId)?.name || 'Destino';
       const instruction = getNextInstruction(vehicle.location, routePoints, destinationName);
       setNavigationInstruction(instruction);
     }
-  }, [passengers, vehicle.location, vehicle.destinationSchool, completedStops]);
+  }, [sortedPassengers, passengers, vehicle.location, vehicle.destinationSchool, completedStops]);
 
   const nextStop = dynamicRoute.find(r => r.id === activeStopId);
   const isFull = passengers.length >= vehicle.capacity;
   
   const handleCompleteStop = (stopId: string) => {
     setCompletedStops(prev => new Set([...prev, stopId]));
+    
+    // When student is picked up, remove from route and recalculate
+    const stop = dynamicRoute.find(r => r.id === stopId);
+    if (stop && stop.studentId) {
+      // Student was picked up - recalculate route without this student
+      recalculateRouteForWaitingStudents();
+    }
+  };
+
+  // Recalculate route for waiting students only
+  const recalculateRouteForWaitingStudents = async () => {
+    if (!vehicle.location || isRecalculating) return;
+    
+    setIsRecalculating(true);
+    try {
+      // Get only waiting students (not picked up)
+      const waitingStudents = sortedPassengers.filter(s => s.status === 'WAITING');
+      const waitingLocations = waitingStudents.map(s => s.location);
+      
+      const schoolLocation = { lat: -23.5505, lng: -46.6333 }; // TODO: Get from vehicle.destinationSchool
+      
+      const newRoute = await recalculateRoute(
+        vehicle.location,
+        waitingLocations,
+        schoolLocation
+      );
+      
+      if (newRoute) {
+        setMapboxRoute(newRoute);
+        setRouteETA(getRouteETA(newRoute));
+      }
+    } catch (error) {
+      console.error('Error recalculating route:', error);
+    } finally {
+      setIsRecalculating(false);
+    }
   };
 
   const handleCallStudent = (phone: string) => {
@@ -142,6 +384,33 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
               {passengers.length} / {vehicle.capacity}
             </div>
           </div>
+          {/* GPS Status Indicator */}
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${
+              gpsStatus === 'idle' ? 'bg-green-500 animate-pulse' :
+              gpsStatus === 'sending' ? 'bg-yellow-500 animate-pulse' :
+              'bg-red-500'
+            }`} title={
+              gpsStatus === 'idle' ? 'GPS Enviando' :
+              gpsStatus === 'sending' ? 'Enviando GPS...' :
+              'Erro no GPS'
+            }></div>
+            <span className="text-[10px] text-hextech-gold/60 uppercase hidden sm:inline">
+              {gpsStatus === 'idle' ? 'GPS' : gpsStatus === 'sending' ? 'Enviando...' : 'Erro'}
+            </span>
+          </div>
+          {/* Route ETA Indicator */}
+          {navigationMode && routeETA > 0 && (
+            <div className="flex items-center gap-2">
+              <Clock size={14} className="text-hextech-blue" />
+              <span className="text-xs font-beaufort font-bold text-hextech-blue">
+                {routeETA} min
+              </span>
+              {isRecalculating && (
+                <span className="text-[10px] text-yellow-500 animate-pulse">Recalculando...</span>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             {notifications > 0 && (
               <div className="relative">
@@ -186,6 +455,10 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
           navigationMode={navigationMode}
           currentRoute={currentRoutePoints}
           userLocation={userLocation || vehicle.location}
+          followDriver={navigationMode && !!userLocation}
+          useMapboxDirections={true}
+          schoolLocation={{ lat: -23.5505, lng: -46.6333 }} // TODO: Get from vehicle.destinationSchool
+          mapboxRoute={mapboxRoute}
           className="h-full w-full"
         />
         
@@ -317,12 +590,18 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
             const isNext = stop.id === activeStopId;
             const isDone = stop.completed || completedStops.has(stop.id);
             const student = passengers.find(p => p.id === stop.studentId);
+            // Calculate distance from current van position
             const distance = stop.type === 'SCHOOL' 
               ? getDistance(vehicle.location, stop.location)
               : student 
                 ? getDistance(vehicle.location, student.location)
                 : 0;
             const eta = calculateETA(distance);
+            
+            // Get position in sorted queue (Uber style)
+            const queuePosition = !isDone && stop.type !== 'SCHOOL' && student
+              ? sortedPassengers.findIndex(p => p.id === student.id) + 1
+              : null;
             
             return (
               <div 
@@ -385,8 +664,16 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
                   {student && !isDone && (
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-[10px] text-hextech-gray/50 uppercase">
-                        {distance.toFixed(1)} km
+                        {distance.toFixed(2)} km
                       </span>
+                      {queuePosition && (
+                        <>
+                          <span className="text-hextech-gold/30">•</span>
+                          <span className="text-[10px] text-hextech-blue/80 font-bold">
+                            #{queuePosition} na fila
+                          </span>
+                        </>
+                      )}
                       <span className="text-hextech-gold/30">•</span>
                       <span className="text-[10px] text-hextech-gray/50">
                         {student.phone}

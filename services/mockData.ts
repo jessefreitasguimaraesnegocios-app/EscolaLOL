@@ -23,17 +23,22 @@ const nearbyCoord = (latOffset = 0, lngOffset = 0): Coordinates => ({
   lng: CENTER_LNG + lngOffset + (Math.random() * 0.01 - 0.005),
 });
 
-// Helper to calculate distance in kilometers (Haversine formula approximation)
+// Helper to calculate distance in kilometers (Haversine formula - Uber style)
 export const getDistance = (c1: Coordinates, c2: Coordinates): number => {
+  return distance(c1.lat, c1.lng, c2.lat, c2.lng);
+};
+
+// Haversine distance function (exact Uber formula)
+export const distance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371; // Earth's radius in km
-  const dLat = (c2.lat - c1.lat) * Math.PI / 180;
-  const dLng = (c2.lng - c1.lng) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) *
+    Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 
 // Calculate ETA in minutes (assuming average speed of 40 km/h in city)
@@ -185,10 +190,31 @@ export const moveVehicles = (vehicles: Vehicle[]): Vehicle[] => {
   });
 };
 
+/**
+ * Sort students by distance from van (Uber style)
+ * Orders from nearest to farthest
+ */
+export const sortStudentsByDistance = (
+  vanLocation: Coordinates,
+  students: Student[]
+): Student[] => {
+  // Create a copy to avoid mutating the original array
+  const sortedStudents = [...students];
+  
+  // Sort by distance: nearest to farthest
+  sortedStudents.sort((a, b) => {
+    const distA = distance(vanLocation.lat, vanLocation.lng, a.location.lat, a.location.lng);
+    const distB = distance(vanLocation.lat, vanLocation.lng, b.location.lat, b.location.lng);
+    return distA - distB;
+  });
+  
+  return sortedStudents;
+};
+
 // --- Route Optimization Algorithm ---
 // Improved algorithm: Nearest Neighbor with destination consideration
 // 1. Start from driver location
-// 2. Pick nearest student
+// 2. Pick nearest student (Uber style - sorted by distance)
 // 3. Continue picking nearest student until all are picked
 // 4. Finally go to school (destination)
 export const optimizeRoute = (
@@ -200,8 +226,13 @@ export const optimizeRoute = (
   const schoolLocation = { lat: -23.5505, lng: -46.6333 }; // Sé Square (Mock School)
   
   let currentLocation = startLocation;
-  const unvisitedStudents = [...passengers.filter(p => p.status === 'WAITING')];
-  const pickedUpStudents = [...passengers.filter(p => p.status === 'PICKED_UP')];
+  
+  // Separate students by status
+  const waitingStudents = passengers.filter(p => p.status === 'WAITING');
+  const pickedUpStudents = passengers.filter(p => p.status === 'PICKED_UP');
+  
+  // Sort waiting students by distance (Uber style)
+  const sortedWaitingStudents = sortStudentsByDistance(startLocation, waitingStudents);
   
   const orderedStops: RouteStop[] = [];
   const routePoints: Coordinates[] = [startLocation];
@@ -218,42 +249,27 @@ export const optimizeRoute = (
     });
   });
 
-  // 2. Optimize route: Nearest Neighbor algorithm
-  // Start from driver, go to nearest student, then nearest to that, etc.
-  while (unvisitedStudents.length > 0) {
-    let nearestIndex = -1;
-    let minDist = Infinity;
-
-    // Find nearest unvisited student from current location
-    for (let i = 0; i < unvisitedStudents.length; i++) {
-      const dist = getDistance(currentLocation, unvisitedStudents[i].location);
-      if (dist < minDist) {
-        minDist = dist;
-        nearestIndex = i;
-      }
-    }
-
-    if (nearestIndex !== -1) {
-      const nextStudent = unvisitedStudents.splice(nearestIndex, 1)[0];
-      const distanceKm = minDist;
-      const etaMinutes = calculateETA(distanceKm);
-      
-      routePoints.push(nextStudent.location);
-      orderedStops.push({
-        id: `stop-${nextStudent.id}`,
-        studentId: nextStudent.id,
-        location: nextStudent.location,
-        completed: false,
-        type: 'PICKUP',
-        eta: `${etaMinutes} min`
-      });
-      
-      currentLocation = nextStudent.location;
-    }
-  }
+  // 2. Optimize route: Nearest Neighbor algorithm (Uber style)
+  // Process students in order of distance (nearest first)
+  sortedWaitingStudents.forEach((nextStudent) => {
+    const distanceKm = distance(currentLocation.lat, currentLocation.lng, nextStudent.location.lat, nextStudent.location.lng);
+    const etaMinutes = calculateETA(distanceKm);
+    
+    routePoints.push(nextStudent.location);
+    orderedStops.push({
+      id: `stop-${nextStudent.id}`,
+      studentId: nextStudent.id,
+      location: nextStudent.location,
+      completed: false,
+      type: 'PICKUP',
+      eta: `${etaMinutes} min`
+    });
+    
+    currentLocation = nextStudent.location;
+  });
 
   // 3. Add School as final destination
-  const schoolDistance = getDistance(currentLocation, schoolLocation);
+  const schoolDistance = distance(currentLocation.lat, currentLocation.lng, schoolLocation.lat, schoolLocation.lng);
   const schoolETA = calculateETA(schoolDistance);
   routePoints.push(schoolLocation);
   orderedStops.push({
