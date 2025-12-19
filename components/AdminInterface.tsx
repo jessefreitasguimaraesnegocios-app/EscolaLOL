@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Vehicle, Student, VehicleStatus, Language } from '../types';
 import MapEngine from './MapEngine';
 import { generateFleetReport } from '../services/geminiService';
-import { BarChart, Activity, Sparkles, LayoutDashboard, Users, Bus as BusIcon, Truck, Settings, X, Save } from 'lucide-react';
+import { BarChart, Activity, Sparkles, LayoutDashboard, Users, Bus as BusIcon, Truck, Settings, X, Save, LogOut } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { t, translateStatus, translateStudentStatus } from '../services/i18n';
 
@@ -11,9 +11,10 @@ interface AdminInterfaceProps {
   students: Student[];
   onUpdateVehicle: (vehicleId: string, updates: Partial<Vehicle>) => void;
   lang: Language;
+  onLogout?: () => void;
 }
 
-const AdminInterface: React.FC<AdminInterfaceProps> = ({ vehicles, students, onUpdateVehicle, lang }) => {
+const AdminInterface: React.FC<AdminInterfaceProps> = ({ vehicles, students, onUpdateVehicle, lang, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'MAP' | 'FLEET' | 'STUDENTS'>('DASHBOARD');
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
@@ -56,6 +57,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({ vehicles, students, onU
               <span>{t(tab.label as any, lang)}</span>
             </button>
           ))}
+          
+          {/* Logout Button */}
+          {onLogout && (
+            <button 
+              onClick={onLogout}
+              className="w-full flex items-center gap-4 px-4 py-3 border border-red-500/30 text-red-500/60 hover:text-red-500 hover:border-red-500/50 hover:bg-red-500/5 transition-all font-beaufort text-xs tracking-hextech uppercase mt-8">
+              <LogOut size={18} />
+              <span>{t('logout', lang) || 'Sair'}</span>
+            </button>
+          )}
         </nav>
 
         <div className="p-6 border-t border-hextech-gold/10 bg-black/20">

@@ -434,7 +434,7 @@ const App: React.FC = () => {
         />
       )}
       {currentRole === UserRole.ADMIN && (
-        <AdminInterface vehicles={vehicles || []} students={students || []} onUpdateVehicle={handleUpdateVehicle} lang={lang} />
+        <AdminInterface vehicles={vehicles || []} students={students || []} onUpdateVehicle={handleUpdateVehicle} lang={lang} onLogout={handleLogout} />
       )}
     </div>
   );
