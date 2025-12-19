@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Vehicle, Student, RouteStop, Language, Coordinates } from '../types';
 import MapEngine from './MapEngine';
-import { Navigation, CheckCircle, MapPin, Users, Plus, Phone, CreditCard, X, Route as RouteIcon, Bus, Clock, ArrowRight, User, ChevronRight, School, ArrowLeft, ArrowUp, Bell } from 'lucide-react';
+import { Navigation, CheckCircle, MapPin, Users, Plus, Phone, CreditCard, X, Route as RouteIcon, Bus, Clock, ArrowRight, User, ChevronRight, School, ArrowLeft, ArrowUp, Bell, Globe, LogOut } from 'lucide-react';
 import { t } from '../services/i18n';
 import { optimizeRoute, getDistance, calculateETA, sortStudentsByDistance } from '../services/mockData';
 import { getNextInstruction, NavigationInstruction } from '../services/navigationService';
@@ -23,10 +23,12 @@ interface DriverInterfaceProps {
   onOptimizeRoute: (vehicleId: string, passengers: Student[]) => void;
   lang: Language;
   userLocation?: Coordinates | null;
+  onLanguageChange?: (lang: Language) => void;
+  onLogout?: () => void;
 }
 
 const DriverInterface: React.FC<DriverInterfaceProps> = ({ 
-  vehicle, passengers, unassignedStudents, onAssignStudent, onOptimizeRoute, lang, userLocation 
+  vehicle, passengers, unassignedStudents, onAssignStudent, onOptimizeRoute, lang, userLocation, onLanguageChange, onLogout
 }) => {
   const [activeStopId, setActiveStopId] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -47,6 +49,8 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
   const [routeETA, setRouteETA] = useState<number>(0);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [lastRouteCheck, setLastRouteCheck] = useState<Coordinates | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   
   // Measure header height
   useEffect(() => {
@@ -363,13 +367,79 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
     }
   }, [isDragging, handleDragMove, handleDragEnd]);
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      // Check if click is outside menu and not on the bus icon button
+      if (menuRef.current && !menuRef.current.contains(target)) {
+        const busButton = target.closest('.w-12.h-12');
+        if (!busButton) {
+          setShowMenu(false);
+        }
+      }
+    };
+
+    if (showMenu) {
+      // Use setTimeout to avoid immediate closure
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 0);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMenu]);
+
   return (
     <div className="flex flex-col h-full bg-hextech-black overflow-hidden">
       {/* Hextech Header */}
       <header className="bg-hextech-dark border-b border-hextech-gold/30 p-4 z-20 flex justify-between items-center shadow-2xl flex-shrink-0">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 border border-hextech-gold/50 flex items-center justify-center bg-hextech-black">
+          <div 
+            className="w-12 h-12 border border-hextech-gold/50 flex items-center justify-center bg-hextech-black cursor-pointer hover:bg-hextech-gold/10 transition-all relative"
+            onClick={() => setShowMenu(!showMenu)}
+          >
             <Bus className="text-hextech-gold" />
+            
+            {/* Dropdown Menu */}
+            {showMenu && (
+              <div 
+                ref={menuRef}
+                className="absolute top-full left-0 mt-2 bg-hextech-dark border border-hextech-gold/50 shadow-[0_0_20px_rgba(195,167,88,0.3)] min-w-[150px] z-50"
+              >
+                <div className="p-2 space-y-1">
+                  {/* Language Toggle */}
+                  <button
+                    onClick={() => {
+                      if (onLanguageChange) {
+                        onLanguageChange(lang === 'en' ? 'pt' : 'en');
+                      }
+                      setShowMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-hextech-black/40 border border-hextech-gold/20 text-hextech-gold hover:bg-hextech-gold/10 hover:border-hextech-gold transition-all text-xs font-beaufort tracking-widest"
+                  >
+                    <Globe size={14} />
+                    <span>{lang === 'en' ? 'PT' : 'EN'}</span>
+                  </button>
+                  
+                  {/* Logout */}
+                  <button
+                    onClick={() => {
+                      if (onLogout) {
+                        onLogout();
+                      }
+                      setShowMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-hextech-black/40 border border-hextech-gold/20 text-hextech-gold hover:bg-red-500/20 hover:border-red-500 transition-all text-xs font-beaufort tracking-widest"
+                  >
+                    <LogOut size={14} />
+                    <span>SAIR</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <div className="text-[10px] text-hextech-gold font-beaufort tracking-[0.2em] opacity-60 uppercase">{t('vehicle_id', lang)}</div>

@@ -396,6 +396,8 @@ const App: React.FC = () => {
           onOptimizeRoute={handleOptimizeRoute}
           lang={lang}
           userLocation={userGPSLocation}
+          onLanguageChange={setLang}
+          onLogout={handleLogout}
         />
       )}
       {currentRole === UserRole.PASSENGER && currentStudent && (
@@ -413,42 +415,6 @@ const App: React.FC = () => {
       {currentRole === UserRole.ADMIN && (
         <AdminInterface vehicles={vehicles || []} students={students || []} onUpdateVehicle={handleUpdateVehicle} lang={lang} />
       )}
-
-      {/* Persistent UI Controls */}
-      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2">
-        <div className="flex gap-2">
-          <button onClick={() => setLang(lang === 'en' ? 'pt' : 'en')} className="bg-hextech-dark/90 border border-hextech-gold/30 text-hextech-gold px-3 py-1 font-beaufort text-xs tracking-widest hover:border-hextech-gold transition-all">
-            {lang.toUpperCase()}
-          </button>
-         <button onClick={handleLogout} className="bg-hextech-dark/90 border border-hextech-gold/30 text-hextech-gold px-3 py-1 font-beaufort text-xs tracking-widest hover:border-hextech-gold transition-all">
-           SAIR
-         </button>
-        </div>
-        {/* GPS Status Indicator */}
-        {currentRole !== UserRole.NONE && (
-          <button
-            onClick={() => setUseRealGPS(!useRealGPS)}
-            className={`px-3 py-1.5 text-xs font-beaufort tracking-widest border transition-all ${
-              gpsLoading 
-                ? 'bg-hextech-gold/20 border-hextech-gold/50 text-hextech-gold cursor-wait' 
-                : gpsError 
-                  ? 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30' 
-                  : userGPSLocation && useRealGPS
-                    ? 'bg-green-500/20 border-green-500/50 text-green-400 hover:bg-green-500/30' 
-                    : 'bg-hextech-gray/20 border-hextech-gray/50 text-hextech-gray hover:bg-hextech-gray/30'
-            }`}
-            title={useRealGPS ? 'Clique para desativar GPS real' : 'Clique para ativar GPS real'}
-          >
-            {gpsLoading 
-              ? 'GPS: Carregando...' 
-              : gpsError 
-                ? 'GPS: Erro (Clique para tentar)' 
-                : userGPSLocation && useRealGPS
-                  ? 'GPS: Ativo ✓' 
-                  : 'GPS: Simulado'}
-          </button>
-        )}
-      </div>
     </div>
   );
 };
