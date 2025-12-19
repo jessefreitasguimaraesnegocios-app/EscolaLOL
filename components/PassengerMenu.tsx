@@ -32,6 +32,8 @@ const PassengerMenu: React.FC<PassengerMenuProps> = ({
 }) => {
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   const [currentView, setCurrentView] = useState<MenuView>('menu');
+  const [showProfileFullscreen, setShowProfileFullscreen] = useState(false);
+  const [showVansFullscreen, setShowVansFullscreen] = useState(false);
   
   // Use external state if provided, otherwise use internal state
   const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
@@ -47,6 +49,18 @@ const PassengerMenu: React.FC<PassengerMenuProps> = ({
       setInternalIsOpen(false);
     }
     setCurrentView('menu');
+    setShowProfileFullscreen(false);
+    setShowVansFullscreen(false);
+  };
+
+  const handleOpenProfile = () => {
+    handleClose();
+    setShowProfileFullscreen(true);
+  };
+
+  const handleOpenVans = () => {
+    handleClose();
+    setShowVansFullscreen(true);
   };
 
   return (
@@ -68,8 +82,58 @@ const PassengerMenu: React.FC<PassengerMenuProps> = ({
         </button>
       )}
 
-      {/* Menu Overlay */}
-      {isOpen && (
+      {/* Profile Fullscreen */}
+      {showProfileFullscreen && (
+        <div className="fixed inset-0 z-[10001] bg-hextech-black backdrop-blur-sm">
+          <div className="h-full w-full flex flex-col">
+            <div className="flex-1 overflow-y-auto">
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfileFullscreen(false)}
+                  className="absolute top-4 right-4 z-10 text-hextech-gold hover:text-white transition-colors bg-hextech-dark/90 border border-hextech-gold/30 p-2 rounded"
+                >
+                  <X size={24} />
+                </button>
+                <StudentProfile
+                  student={student}
+                  onUpdate={onUpdateStudent}
+                  lang={lang}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vans Fullscreen */}
+      {showVansFullscreen && (
+        <div className="fixed inset-0 z-[10001] bg-hextech-black backdrop-blur-sm">
+          <div className="h-full w-full flex flex-col">
+            <div className="flex-1 overflow-y-auto">
+              <div className="relative">
+                <button
+                  onClick={() => setShowVansFullscreen(false)}
+                  className="absolute top-4 right-4 z-10 text-hextech-gold hover:text-white transition-colors bg-hextech-dark/90 border border-hextech-gold/30 p-2 rounded"
+                >
+                  <X size={24} />
+                </button>
+                <VanList
+                  vehicles={vehicles}
+                  currentStudent={student}
+                  onSelectVehicle={(vehicleId) => {
+                    onSelectVehicle(vehicleId);
+                    setShowVansFullscreen(false);
+                  }}
+                  lang={lang}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Menu Overlay - Only show if no fullscreen views are open */}
+      {isOpen && !showProfileFullscreen && !showVansFullscreen && (
         <div className="fixed inset-0 z-[10000] bg-hextech-black/90 backdrop-blur-sm">
           <div className="h-full w-full flex flex-col">
             {/* Header */}
@@ -92,7 +156,7 @@ const PassengerMenu: React.FC<PassengerMenuProps> = ({
               {currentView === 'menu' && (
                 <div className="h-full flex flex-col items-center justify-center p-6 space-y-4">
                   <button
-                    onClick={() => handleViewChange('profile')}
+                    onClick={handleOpenProfile}
                     className="w-full max-w-md bg-hextech-dark border-2 border-hextech-gold/30 p-6 hover:border-hextech-gold transition-all group"
                   >
                     <div className="flex items-center gap-4">
@@ -111,7 +175,7 @@ const PassengerMenu: React.FC<PassengerMenuProps> = ({
                   </button>
 
                   <button
-                    onClick={() => handleViewChange('vans')}
+                    onClick={handleOpenVans}
                     className="w-full max-w-md bg-hextech-dark border-2 border-hextech-gold/30 p-6 hover:border-hextech-gold transition-all group"
                   >
                     <div className="flex items-center gap-4">
