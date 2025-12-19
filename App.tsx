@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserRole, Vehicle, Student, Language, Coordinates, User, VehicleStatus } from './types';
+import { UserRole, Vehicle, Student, Language, Coordinates, User, VehicleStatus, Driver } from './types';
 import { INITIAL_VEHICLES, INITIAL_STUDENTS, moveVehicles, optimizeRoute } from './services/mockData';
 import DriverInterface from './components/DriverInterface';
 import PassengerInterface from './components/PassengerInterface';
@@ -307,6 +307,23 @@ const App: React.FC = () => {
     setIsAuthenticated(false);
   };
 
+  const handleProfileClick = () => {
+    // Profile modal is handled by DriverInterface component
+  };
+
+  const handleUpdateDriver = (updates: Partial<Driver>) => {
+    if (currentUser && currentUser.role === UserRole.DRIVER) {
+      const updatedDriver = { ...currentUser, ...updates } as Driver;
+      setCurrentUser(updatedDriver);
+      // Also update the vehicle's driver name if name was updated
+      if (updates.name && mainVehicle) {
+        setVehicles(prev => prev.map(v => 
+          v.id === mainVehicle.id ? { ...v, driverName: updates.name || v.driverName } : v
+        ));
+      }
+    }
+  };
+
   // Safe element access to prevent reading '0' of undefined
   const mainVehicle = vehicles && vehicles.length > 0 ? vehicles[0] : null;
   const currentStudent = students && students.length > 0 ? students[0] : null;
@@ -398,6 +415,9 @@ const App: React.FC = () => {
           userLocation={userGPSLocation}
           onLanguageChange={setLang}
           onLogout={handleLogout}
+          onProfileClick={handleProfileClick}
+          currentDriver={currentUser && currentUser.role === UserRole.DRIVER ? currentUser as Driver : undefined}
+          onUpdateDriver={handleUpdateDriver}
         />
       )}
       {currentRole === UserRole.PASSENGER && currentStudent && (

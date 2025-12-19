@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Vehicle, Student, RouteStop, Language, Coordinates } from '../types';
+import { Vehicle, Student, RouteStop, Language, Coordinates, Driver } from '../types';
 import MapEngine from './MapEngine';
-import { Navigation, CheckCircle, MapPin, Users, Plus, Phone, CreditCard, X, Route as RouteIcon, Bus, Clock, ArrowRight, User, ChevronRight, School, ArrowLeft, ArrowUp, Bell, Globe, LogOut } from 'lucide-react';
+import DriverProfile from './DriverProfile';
+import { Navigation, CheckCircle, MapPin, Users, Plus, Phone, CreditCard, X, Route as RouteIcon, Bus, Clock, ArrowRight, User, ChevronRight, School, ArrowLeft, ArrowUp, Bell, Globe, LogOut, UserCircle } from 'lucide-react';
 import { t } from '../services/i18n';
 import { optimizeRoute, getDistance, calculateETA, sortStudentsByDistance } from '../services/mockData';
 import { getNextInstruction, NavigationInstruction } from '../services/navigationService';
@@ -25,10 +26,13 @@ interface DriverInterfaceProps {
   userLocation?: Coordinates | null;
   onLanguageChange?: (lang: Language) => void;
   onLogout?: () => void;
+  onProfileClick?: () => void;
+  currentDriver?: Driver;
+  onUpdateDriver?: (updates: Partial<Driver>) => void;
 }
 
 const DriverInterface: React.FC<DriverInterfaceProps> = ({ 
-  vehicle, passengers, unassignedStudents, onAssignStudent, onOptimizeRoute, lang, userLocation, onLanguageChange, onLogout
+  vehicle, passengers, unassignedStudents, onAssignStudent, onOptimizeRoute, lang, userLocation, onLanguageChange, onLogout, onProfileClick, currentDriver, onUpdateDriver
 }) => {
   const [activeStopId, setActiveStopId] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -50,6 +54,7 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [lastRouteCheck, setLastRouteCheck] = useState<Coordinates | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   
   // Measure header height
@@ -410,6 +415,21 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
                 className="absolute top-full left-0 mt-2 bg-hextech-dark border border-hextech-gold/50 shadow-[0_0_20px_rgba(195,167,88,0.3)] min-w-[150px] z-[9999]"
               >
                 <div className="p-2 space-y-1">
+                  {/* Profile */}
+                  <button
+                    onClick={() => {
+                      setShowProfile(true);
+                      setShowMenu(false);
+                      if (onProfileClick) {
+                        onProfileClick();
+                      }
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-hextech-black/40 border border-hextech-gold/20 text-hextech-gold hover:bg-hextech-blue/20 hover:border-hextech-blue transition-all text-xs font-beaufort tracking-widest"
+                  >
+                    <UserCircle size={14} />
+                    <span>{t('profile', lang) || 'Perfil'}</span>
+                  </button>
+                  
                   {/* Language Toggle */}
                   <button
                     onClick={() => {
@@ -785,7 +805,7 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
         </div>
       </div>
 
-      {/* Hextech Modal */}
+      {/* Hextech Modal - Add Student */}
       {showAddModal && (
         <div className="fixed inset-0 z-[100] bg-hextech-black/90 backdrop-blur-md flex items-center justify-center p-6">
           <div className="bg-hextech-dark border border-hextech-gold w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.8)]">
@@ -813,6 +833,25 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Driver Profile Modal */}
+      {showProfile && currentDriver && (
+        <DriverProfile
+          driver={currentDriver}
+          vehicle={vehicle}
+          onClose={() => setShowProfile(false)}
+          lang={lang}
+          onUpdate={(updates) => {
+            if (onUpdateDriver) {
+              onUpdateDriver(updates);
+            }
+            // Update local state to reflect changes immediately
+            if (updates.photo) {
+              // Photo is already handled by DriverProfile's internal state
+            }
+          }}
+        />
       )}
     </div>
   );

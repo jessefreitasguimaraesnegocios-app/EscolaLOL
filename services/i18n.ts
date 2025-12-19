@@ -113,7 +113,9 @@ export const translations = {
     
     // Student Menu
     profile: "My Profile",
-    available_vehicles: "Available Vehicles"
+    available_vehicles: "Available Vehicles",
+    edit: "Edit Profile",
+    not_informed: "Not informed"
   },
   pt: {
     app_subtitle: "Transporte seguro, eficiente e inteligente para a próxima geração.",
@@ -226,7 +228,9 @@ export const translations = {
     
     // Student Menu
     profile: "Meu Perfil",
-    available_vehicles: "Vans Disponíveis"
+    available_vehicles: "Vans Disponíveis",
+    edit: "Editar Perfil",
+    not_informed: "Não informado"
   }
 };
 
