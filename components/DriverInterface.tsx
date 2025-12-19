@@ -395,10 +395,10 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
   return (
     <div className="flex flex-col h-full bg-hextech-black overflow-hidden">
       {/* Hextech Header */}
-      <header className="bg-hextech-dark border-b border-hextech-gold/30 p-4 z-20 flex justify-between items-center shadow-2xl flex-shrink-0">
+      <header className="bg-hextech-dark border-b border-hextech-gold/30 p-4 z-[9998] flex justify-between items-center shadow-2xl flex-shrink-0 relative">
         <div className="flex items-center gap-4">
           <div 
-            className="w-12 h-12 border border-hextech-gold/50 flex items-center justify-center bg-hextech-black cursor-pointer hover:bg-hextech-gold/10 transition-all relative"
+            className="w-12 h-12 border border-hextech-gold/50 flex items-center justify-center bg-hextech-black cursor-pointer hover:bg-hextech-gold/10 transition-all relative z-[10000]"
             onClick={() => setShowMenu(!showMenu)}
           >
             <Bus className="text-hextech-gold" />
@@ -407,7 +407,7 @@ const DriverInterface: React.FC<DriverInterfaceProps> = ({
             {showMenu && (
               <div 
                 ref={menuRef}
-                className="absolute top-full left-0 mt-2 bg-hextech-dark border border-hextech-gold/50 shadow-[0_0_20px_rgba(195,167,88,0.3)] min-w-[150px] z-50"
+                className="absolute top-full left-0 mt-2 bg-hextech-dark border border-hextech-gold/50 shadow-[0_0_20px_rgba(195,167,88,0.3)] min-w-[150px] z-[9999]"
               >
                 <div className="p-2 space-y-1">
                   {/* Language Toggle */}
