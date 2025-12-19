@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Vehicle, Student, Language, Coordinates } from '../types';
 import MapEngine from './MapEngine';
 import PassengerMenu from './PassengerMenu';
-import { Clock, Phone, Shield, ChevronRight, Bus } from 'lucide-react';
+import { Clock, Phone, Shield, ChevronRight, Bus, Menu } from 'lucide-react';
 import { t } from '../services/i18n';
 
 interface PassengerInterfaceProps {
@@ -12,6 +12,7 @@ interface PassengerInterfaceProps {
   userLocation?: Coordinates | null;
   onUpdateStudent?: (updates: Partial<Student>) => void;
   onAssignVehicle?: (studentId: string, vehicleId: string) => void;
+  onLogout?: () => void;
 }
 
 const PassengerInterface: React.FC<PassengerInterfaceProps> = ({ 
@@ -20,11 +21,13 @@ const PassengerInterface: React.FC<PassengerInterfaceProps> = ({
   lang, 
   userLocation,
   onUpdateStudent,
-  onAssignVehicle
+  onAssignVehicle,
+  onLogout
 }) => {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(
     vehicles.find(v => v.id === currentUser.vehicleId) || null
   );
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const assignedVehicle = vehicles.find(v => v.id === currentUser.vehicleId);
 
@@ -45,9 +48,17 @@ const PassengerInterface: React.FC<PassengerInterfaceProps> = ({
     <div className="flex flex-col h-full bg-white">
       {/* Search Header */}
       <div className="p-4 bg-white shadow-sm z-10">
-        <div className="bg-slate-100 p-3 rounded-full flex items-center gap-3 text-slate-500">
-          <div className="w-2 h-2 rounded-full bg-slate-400"></div>
-          <span className="text-sm font-medium">{t('to', lang)} {assignedVehicle?.destinationSchool || 'School'}</span>
+        <div className="bg-slate-100 p-3 rounded-full flex items-center justify-between gap-3 text-slate-500">
+          <div className="flex items-center gap-3 flex-1">
+            <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+            <span className="text-sm font-medium">{t('to', lang)} {assignedVehicle?.destinationSchool || 'School'}</span>
+          </div>
+          <button
+            onClick={() => setMenuOpen(true)}
+            className="w-10 h-10 bg-slate-200 hover:bg-slate-300 rounded-full flex items-center justify-center transition-all flex-shrink-0"
+          >
+            <Menu size={20} className="text-slate-600" />
+          </button>
         </div>
       </div>
 
@@ -125,6 +136,10 @@ const PassengerInterface: React.FC<PassengerInterfaceProps> = ({
         onUpdateStudent={handleUpdateStudent}
         onSelectVehicle={handleSelectVehicle}
         lang={lang}
+        showButton={false}
+        isOpen={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onLogout={onLogout}
       />
     </div>
   );

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Student, Vehicle, Language } from '../types';
-import { User, Bus, Menu, X } from 'lucide-react';
+import { User, Bus, Menu, X, LogOut } from 'lucide-react';
 import StudentProfile from './StudentProfile';
 import VanList from './VanList';
+import { t } from '../services/i18n';
 
 interface PassengerMenuProps {
   student: Student;
@@ -10,6 +11,10 @@ interface PassengerMenuProps {
   onUpdateStudent: (updates: Partial<Student>) => void;
   onSelectVehicle: (vehicleId: string) => void;
   lang: Language;
+  showButton?: boolean; // Control whether to show the floating button
+  isOpen?: boolean; // Control menu open state externally
+  onClose?: () => void; // Callback when menu closes
+  onLogout?: () => void; // Callback for logout
 }
 
 type MenuView = 'menu' | 'profile' | 'vans';
@@ -19,33 +24,53 @@ const PassengerMenu: React.FC<PassengerMenuProps> = ({
   vehicles,
   onUpdateStudent,
   onSelectVehicle,
-  lang
+  lang,
+  showButton = true,
+  isOpen: externalIsOpen,
+  onClose: externalOnClose,
+  onLogout
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const [currentView, setCurrentView] = useState<MenuView>('menu');
+  
+  // Use external state if provided, otherwise use internal state
+  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
 
   const handleViewChange = (view: MenuView) => {
     setCurrentView(view);
   };
 
   const handleClose = () => {
-    setIsOpen(false);
+    if (externalOnClose) {
+      externalOnClose();
+    } else {
+      setInternalIsOpen(false);
+    }
     setCurrentView('menu');
   };
 
   return (
     <>
-      {/* Menu Button */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-16 h-16 bg-hextech-gold rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(195,167,88,0.5)] hover:bg-hextech-lightGold transition-all"
-      >
-        <Menu size={24} className="text-hextech-black" />
-      </button>
+      {/* Menu Button - Only show if showButton is true */}
+      {showButton && (
+        <button
+          onClick={() => {
+            if (externalIsOpen === undefined) {
+              setInternalIsOpen(true);
+            } else if (externalOnClose) {
+              // If externally controlled, we can't open it from here
+              // This button shouldn't be shown when externally controlled
+            }
+          }}
+          className="fixed top-6 right-6 z-50 w-16 h-16 bg-hextech-gold rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(195,167,88,0.5)] hover:bg-hextech-lightGold transition-all"
+        >
+          <Menu size={24} className="text-hextech-black" />
+        </button>
+      )}
 
       {/* Menu Overlay */}
       {isOpen && (
-        <div className="fixed inset-0 z-[100] bg-hextech-black/90 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[10000] bg-hextech-black/90 backdrop-blur-sm">
           <div className="h-full w-full flex flex-col">
             {/* Header */}
             <div className="bg-hextech-dark border-b border-hextech-gold/30 p-4 flex justify-between items-center">
@@ -103,6 +128,31 @@ const PassengerMenu: React.FC<PassengerMenuProps> = ({
                       </div>
                     </div>
                   </button>
+
+                  {/* Logout Button */}
+                  {onLogout && (
+                    <button
+                      onClick={() => {
+                        handleClose();
+                        onLogout();
+                      }}
+                      className="w-full max-w-md bg-hextech-dark border-2 border-red-500/30 p-6 hover:border-red-500 transition-all group mt-4"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 bg-red-500/20 border-2 border-red-500 rounded-full flex items-center justify-center group-hover:bg-red-500/30 transition-all">
+                          <LogOut size={32} className="text-red-500" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <h3 className="text-xl font-beaufort font-bold text-red-500 tracking-wider uppercase mb-1">
+                            {t('logout', lang) || 'Sair'}
+                          </h3>
+                          <p className="text-sm text-hextech-gray/60">
+                            {lang === 'pt' ? 'Sair da sua conta' : 'Log out of your account'}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  )}
                 </div>
               )}
 

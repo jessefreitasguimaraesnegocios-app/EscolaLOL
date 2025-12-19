@@ -430,6 +430,7 @@ const App: React.FC = () => {
             setStudents(prev => prev.map(s => s.id === currentStudent.id ? { ...s, ...updates } : s));
           }}
           onAssignVehicle={handleAssignStudent}
+          onLogout={handleLogout}
         />
       )}
       {currentRole === UserRole.ADMIN && (
